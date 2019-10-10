@@ -1,0 +1,777 @@
+ACTION_IF NOT VARIABLE_IS_SET STRINGUTIL THEN BEGIN
+OUTER_TEXT_SPRINT STRINGUTIL ~STRINGUTIL~
+
+
+/*************************************************************************************
+ **********                                                                 **********
+ **********      Various utility functions working on string variables      **********
+ **********                                                                 **********
+ *************************************************************************************/ 
+
+
+/** Space, tab and new line with an optional carriage return character before it if built on a windows system. */
+OUTER_TEXT_SPRINT WHITESPACE_CHARS ~ %WNL%%TAB%~
+/** Regexp for a single ASCII white space character. */
+OUTER_TEXT_SPRINT WHITESPACE_RX ~\([%WHITESPACE_CHARS%]*\)~
+/** Regexp for a character which is not ASCII white space. */
+OUTER_TEXT_SPRINT BLACKSPACE_RX ~\([^%WHITESPACE_CHARS%]*\)~
+
+
+
+
+
+
+/** Escapes all REGEXP special characters in a string with a '\' so the string can be safely used 
+  * inside a regular expression for verbatim matching. 
+  */					
+DEFINE_ACTION_FUNCTION regexp_escape	
+	STR_VAR	str = ~~
+	RET regexp
+	BEGIN
+		OUTER_PATCH_SAVE regexp ~%str%~ BEGIN //todo: this will fail if the symbols are inside []
+			REPLACE_EVALUATE CASE_SENSITIVE ~\([][\?.^$]\)~ BEGIN 
+				//no idea what's happening here, but it treats '\\' as '\'
+				PATCH_IF ~%MATCH1%~ STR_EQ ~\~ THEN BEGIN 
+					TEXT_SPRINT replacement ~\\\\~
+				END ELSE BEGIN
+					TEXT_SPRINT replacement ~\%MATCH1%~ 
+				END
+			END ~%replacement%~
+			REPLACE_TEXTUALLY EXACT_MATCH ~*~ ~\\*~		
+			REPLACE_TEXTUALLY EXACT_MATCH ~+~ ~\\+~
+		END
+	END
+
+
+
+/** Escapes all REGEXP special characters in a string with a '\' so the string can be safely used 
+  * inside a regular expression for verbatim matching. 
+  */					
+DEFINE_PATCH_FUNCTION regexp_escape
+	STR_VAR str = ~~
+	RET regexp
+	BEGIN
+		INNER_ACTION BEGIN
+			LAF regexp_escape STR_VAR str = EVALUATE_BUFFER ~%str%~ RET regexp END
+		END
+	END
+
+
+
+
+
+/** Writes the given string variable at the end of the current patch buffer, extending it
+  * by the length of the string. Additionally, end of line characters can be inserted before
+  * or after the string.
+  */
+DEFINE_PATCH_FUNCTION append_string
+	INT_VAR 
+		/** If `1`, a new line character %WNL% is written immediately after %string%. Defaults to `0`. */
+		newline = 0
+		/** If `1`, a new line character %WNL% is written immediately before and after %string%.
+		  * The preceding %WNL% is not written if the buffer is empty or already ends with a new line
+		  * character %LNL%. */
+		fullline = 0
+	STR_VAR 
+		/** The string to append at the end of the current path buffer. */
+		string = ~~
+	RET
+		/** The size of the buffer when the function returns. */
+		srclength
+	BEGIN
+		SET length = STRING_LENGTH ~%string%~
+		SET srclength = BUFFER_LENGTH
+		
+		PATCH_IF newline AND srclength THEN BEGIN
+			READ_ASCII (srclength - 1) last (1)
+			PATCH_IF NOT ~%last%~ STR_EQ ~%LNL%~ THEN BEGIN
+				INSERT_BYTES srclength 2
+				WRITE_ASCIIE srclength ~%WNL%~
+				SET srclength += 2
+			END
+		END
+		PATCH_IF length THEN BEGIN			
+			INSERT_BYTES srclength length
+			WRITE_ASCIIE srclength length
+			SET srclength += length		
+		END 
+		PATCH_IF fullline THEN BEGIN
+			INSERT_BYTES srclength 2
+			WRITE_ASCIIE srclength ~%WNL%~
+			SET srclength += 2
+		END		
+	END
+	
+	
+	
+	
+	
+	
+/** Concatenates elements of an array into a single string in a more efficient manner
+  * than recursive 'TEXT_SPRINT'. Optional prefix and suffix can be provided for
+  * wrapping around the elements, as well an optional separator inserted between
+  * each two array elements (the separator is not printed between the prefix and the first
+  * element or the last element and the suffix).
+  */
+DEFINE_ACTION_FUNCTION concat
+	INT_VAR 
+		/** If specified, only that many first elements  of the array are used.
+		  * Useful when another function returns a non-empty array due to the weidu
+		  * limitation of array initialization, while simultaneously specifying zero size.
+		  */
+		size = 2147483647
+	STR_VAR 
+		/** Name of the array which values are concatenated together. */
+		array = ~~
+		/** Optional prefix of the returned string (printed before array elements). */
+		prefix = ~~
+		/** Optional suffix of the returned string (printed after all array elements). */
+		suffix = ~~
+		/** Optional separators string inserted between each pair of included array elements. */
+		separator = ~~
+	RET 
+		/** String in the format: '[<prefix>][<item>[<separator><item>]*][<suffix>]. */
+		res
+	BEGIN
+		ACTION_IF NOT size THEN BEGIN //special case to avoid iterating over the whole array
+			ACTION_IF ~%prefix%~ STR_EQ ~~ THEN BEGIN
+				ACTION_IF ~%suffix%~ STR_EQ ~~ THEN BEGIN
+					OUTER_TEXT_SPRINT res ~~
+				END ELSE BEGIN
+					OUTER_TEXT_SPRINT res ~%suffix%~
+				END
+			END ELSE ACTION_IF ~%suffix%~ STR_EQ ~~ THEN BEGIN
+				OUTER_TEXT_SPRINT res ~%prefix%~
+			END ELSE BEGIN
+				OUTER_TEXT_SPRINT res ~%prefix%%suffix%~
+			END
+			
+		END ELSE BEGIN
+			OUTER_PATCH_SAVE res ~%prefix%~ BEGIN
+				SET separator_length = STRING_LENGTH ~%separator%~
+				SET total = STRING_LENGTH ~%prefix%~
+				SET i = 0
+				PHP_EACH ~%array%~ AS _ => string BEGIN
+					PATCH_IF i < size THEN BEGIN
+						PATCH_IF i THEN BEGIN
+							INSERT_BYTES total separator_length
+							WRITE_ASCIIE total ~%separator%~
+							SET total += separator_length
+						END
+						SET i += 1
+						SET expand = STRING_LENGTH ~%string%~
+						INSERT_BYTES total expand
+						WRITE_ASCIIE total ~%string%~
+						SET total += expand
+
+					END
+				END
+				SET expand = STRING_LENGTH ~%suffix%~
+				PATCH_IF expand > 0 THEN BEGIN
+					INSERT_BYTES total expand
+					WRITE_ASCIIE total ~%suffix%~
+				END
+			END
+		END
+	END
+	
+	
+
+/** Concatenates elements of an array into a single string in a more efficient manner
+  * than recursive 'TEXT_SPRINT'. Optional prefix and suffix can be provided for
+  * wrapping around the elements, as well an optional separator inserted between
+  * each two array elements (the separator is not printed between the prefix and the first
+  * element or the last element and the suffix).
+  */
+DEFINE_PATCH_FUNCTION concat
+	INT_VAR 
+		/** If specified, only that many first elements  of the array are used.
+		  * Useful when another function returns a non-empty array due to the weidu
+		  * limitation of array initialization, while simultaneously specifying zero size.
+		  */
+		size = 2147483647
+	STR_VAR 
+		/** Name of the array which values are concatenated together. */
+		array = ~~
+		/** Optional prefix of the returned string (printed before array elements). */
+		prefix = ~~
+		/** Optional suffix of the returned string (printed after all array elements). */
+		suffix = ~~
+		/** Optional separators string inserted between each pair of included array elements. */
+		separator = ~~
+	RET 
+		/** String in the format: '[<prefix>][<item>[<separator><item>]*][<suffix>]. */
+		res
+	BEGIN
+		INNER_ACTION BEGIN
+			LAF concat 
+				INT_VAR size = size 
+				STR_VAR 
+					array = EVALUATE_BUFFER ~%array%~ 
+					prefix = EVALUATE_BUFFER ~%prefix%~
+					suffix = EVALUATE_BUFFER ~%suffix%~
+					separator = EVALUATE_BUFFER ~%separator%~
+				RET res END
+		END
+	END
+
+
+
+/** Splits the given %string% argument into several substrings around separator characters,
+  * returning all chunks in the %res% array. Aside from the input %string% argument, exactly
+  * one of %separator%, %separators% or %regexp% variable must be passed to the function,
+  * depending on how the string should be cut. Regardless of the manner in which fragments
+  * of %string% are interpreted as separator substrings, the splitting is done as follows:
+  * when a separator substring is found, the input string is cut before its start and after 
+  * its end (such that the prefix ends with the last character before the separator and the
+  * suffix starts with the first character after the separator). All characters before the 
+  * separator down to the previous separator occurence or string start are treated as a single
+  * chunk, while all characters following the spearator until the next separator occurence
+  * or end of the string are treated as another. The substrings are returned in the array in order
+  * in which they appear in the input string and, optionally, empty strings can be ommited
+  * (so two or more consecutive separators found immediately one after another do not result
+  * in including an empty string for every such pair).
+  */
+DEFINE_ACTION_FUNCTION split_string
+	INT_VAR 
+		/** If non-zero, empty strings are not included in the returned array. */
+		nonempty = 0
+	STR_VAR
+		/** Input string argument. */
+		string = ~~
+		/** A string literal to be used as a separator. Each exact occurence in the input
+		  * string is treated as a separator. */
+		separator = ~~
+		/** A string which characters are treated as individual separator strings of length 1.
+		  * Equivalent to passing regexp = ~[%separators%]~ (but slightly faster). */
+		separators = ~~
+		/** A regular expression matching the separators in the input string. It is matched
+		  * repeatedly against the input string, each time the search starting from the first 
+		  * character after the last occurence. The substrings which do not match (in between
+		  * each disjoint occurence of the regexp) are retruend as the chunks in the array. */
+		regexp = ~~
+	RET 
+		/** Number of returned chunks after the splitting. If zero (possible when the flag nonempty is set)
+		  * the returned array $res will contain a single synthetic element forced by the weidu 
+		  * requirement of initializing returned arrays.
+		  */
+		size
+	RET_ARRAY 
+		/** The array containing all individual chunks split from the input string. Returned %size%
+		  * specifies the number of elements in the array. If zero, the array will contain a single
+		  * synthetic element which is not considered part of the 'real' result. */
+		res 
+	BEGIN
+		ACTION_CLEAR_ARRAY res
+		OUTER_SET srclength = STRING_LENGTH ~%string%~		
+		OUTER_SET start = 0
+		OUTER_SET size = 0
+		ACTION_IF NOT ~%separator%~ STR_EQ ~~ THEN BEGIN
+			OUTER_SET skip = STRING_LENGTH ~%separator%~
+
+			OUTER_WHILE start <= srclength BEGIN
+				OUTER_SET end = INDEX(CASE_SENSITIVE EXACT_MATCH ~%separator%~ ~%string%~ start)
+				ACTION_IF end < 0 THEN BEGIN
+					OUTER_SET end = srclength
+				END
+				LAF SUBSTRING 
+					INT_VAR start = start length = end - start
+					STR_VAR string = EVALUATE_BUFFER ~%string%~
+					RET substring END
+				ACTION_IF end > start OR NOT nonempty THEN BEGIN
+					OUTER_TEXT_SPRINT $res(~%size%~) ~%substring%~
+					OUTER_SET size += 1
+				END
+				OUTER_SET start = end + skip
+			END
+			
+		END ELSE ACTION_IF NOT ~%regexp%~ STR_EQ ~~ THEN BEGIN
+			//match the regexp repeatedly against the string and write down the length of each match
+			OUTER_PATCH ~%string%~ BEGIN 
+				SET i = 0
+				REPLACE_EVALUATE CASE_SENSITIVE ~%regexp%~ BEGIN
+					SET $skip(~%i%~) = STRING_LENGTH ~%MATCH0%~
+					SET i += 1
+				END ~~
+				SET $skip(~%i%~) = 1
+			END
+
+			OUTER_SET chunk = 0
+			OUTER_WHILE start <= srclength BEGIN
+				OUTER_SET end = INDEX(CASE_SENSITIVE EVALUATE_REGEXP ~%regexp%~ ~%string%~ start)
+				ACTION_IF end < 0 THEN BEGIN
+					OUTER_SET end = srclength
+				END
+				LAF SUBSTRING 
+					INT_VAR start = start length = end - start
+					STR_VAR string = EVALUATE_BUFFER ~%string%~
+					RET substring END
+				ACTION_IF end > start OR NOT nonempty THEN BEGIN
+					OUTER_TEXT_SPRINT $res(~%size%~) ~%substring%~
+					OUTER_SET size += 1
+				END
+				OUTER_SET start = end + $skip(~%chunk%~)
+				OUTER_SET chunk += 1
+			END
+			
+		END ELSE ACTION_IF NOT ~%separators%~ STR_EQ ~~ THEN BEGIN
+			OUTER_PATCH ~%string%~ BEGIN
+				WHILE start < srclength BEGIN
+					SET end = start
+					SET is_end = 0 
+					WHILE end < srclength AND NOT is_end BEGIN
+						READ_ASCII end peek (1)
+						SET is_end = INDEX(CASE_SENSITIVE EXACT_MATCH ~%peek%~ ~%separators%~) >= 0
+						SET end += 1
+					END
+					PATCH_IF is_end THEN BEGIN
+						SET end -= 1
+					END
+					PATCH_IF end > start OR NOT nonempty THEN BEGIN
+						READ_ASCII start substring (end - start)
+						TEXT_SPRINT $res(~%size%~) ~%substring%~
+						SET size += 1
+					END
+					SET start = end + 1
+				END				
+			END
+			
+		END ELSE BEGIN
+			FAIL ~split_string: separator, separators or regexp argument is required.
+string: '%string%'~
+		END
+		
+		ACTION_IF NOT size THEN BEGIN
+			ACTION_DEFINE_ASSOCIATIVE_ARRAY res BEGIN ~~ => ~<empty array; check size before access>~ END
+		END
+	END
+
+
+
+/** Splits the given %string% argument into several substrings around separator characters,
+  * returning all chunks in the %res% array. Aside from the input %string% argument, exactly
+  * one of %separator%, %separators% or %regexp% variable must be passed to the function,
+  * depending on how the string should be cut. Regardless of the manner in which fragments
+  * of %string% are interpreted ss separator substrings, the splitting is done as follows:
+  * when a separator substring is found, the input string is cut before its start and after 
+  * its end (such that the prefix ends with the last character before the separator and the
+  * suffix starts with the first character after the separator). All characters before the 
+  * separator down to the previous separator occurence or string start as treated as a single
+  * chunk, while all characters following the spearator until the next separator occurence
+  * or end of the string are treated as another. The substrings are returned in the array in order
+  * in which they appear in the input string and, optionally, empty strings can be ommited
+  * (so two or more consecutive separators found immediately one after another do not result
+  * in including an empty string for every such pair).
+  */
+DEFINE_PATCH_FUNCTION split_string
+	INT_VAR 
+		/** If non-zero, empty strings are not included in the returned array. */
+		nonempty = 0
+	STR_VAR
+		/** Input string argument. */
+		string = ~~
+		/** A string literal to be used as a separator. Each exact occurence in the input
+		  * string is treated as a separator. */
+		separator = ~~
+		/** A string which characters are treated as individual separator strings of length 1.
+		  * Equivalent to passing regexp = ~[%separators%]~ (but slightly faster). */
+		separators = ~~
+		/** A regular expression matching the separators in the input string. It is matched
+		  * repeatedly against the input string, each time the search starting from the first 
+		  * character after the last occurence. The substrings which do not match (in between
+		  * each disjoint occurence of the regexp) are retruend as the chunks in the array. */
+		regexp = ~~
+	RET 
+		/** Number of returned chunks after the splitting. If zero (possible when the flag nonempty is set)
+		  * the returned array $res will contain a single synthetic element forced by the weidu 
+		  * requirement of initializing returned arrays.
+		  */
+		size
+	RET_ARRAY 
+		/** The array containing all individual chunks split from the input string. Returned %size%
+		  * specifies the number of elements in the array. If zero, the array will contain a single
+		  * synthetic element which is not considered part of the 'real' result. */
+		res 
+	BEGIN
+		INNER_ACTION BEGIN
+			LAF split_string
+				INT_VAR nonempty = nonempty
+				STR_VAR
+					string = EVALUATE_BUFFER ~%string%~
+					separator = EVALUATE_BUFFER ~%separator%~
+					separators = EVALUATE_BUFFER ~%separators%~
+					regexp = EVALUATE_BUFFER ~%regexp%~
+				RET size
+				RET_ARRAY res
+			END
+		END
+	END
+
+
+
+
+
+/** Calculates the length of the longest segment of the patched buffer which starts at the given offset
+  * and in which all characters match the given regexp (or character list).
+  * If neither %chars% nor %char_rx% argument is specified, the length of the longest whitespace segment
+  * is calculated.
+  */
+DEFINE_PATCH_FUNCTION buffer_segment_length
+	INT_VAR 
+		/** Offset in the buffer marking the start of the calculated segment. */
+		offset = 0 
+		/** If non-zero, reading happens in the reverse direction:
+		    the calculated segment must preceed %offset%, rather than follow it. */
+		backwards = 0
+	STR_VAR
+		/** A string treated as a list of individual characters allowed in the segment. */
+		chars = ~~
+		/** Regular expression which all characters in the segment must match (if specified). */
+		char_rx = ~~
+	RET
+		/** Length of the longest segment starting with %offset% in which all characters 
+		  * match %chars%/%char_rx%. */ 
+		length
+		/** Length of the input buffer, returned here simply for convenience, as the caller will
+		  * almost always want to compare the prefix length with the total length of the string. */
+		srclength
+		/** First character in the buffer after offset which does not match %char_rx%/%chars%
+		  * (at offset offset + %length%). If %length% == %srclength% then peek == ~~. */
+		peek
+	BEGIN
+		PATCH_IF offset < 0 THEN BEGIN
+			SET offset = cursor
+		END
+		
+		PATCH_IF ~%chars%~ STR_EQ ~~ AND ~%char_rx%~ STR_EQ ~~ THEN BEGIN
+			LPF buffer_segment_length
+				INT_VAR offset = offset
+				STR_VAR chars = EVALUATE_BUFFER ~%WHITESPACE_CHARS%~
+				RET length srclength peek
+			END
+		END ELSE BEGIN
+			SET srclength = BUFFER_LENGTH
+			TEXT_SPRINT peek ~~
+			SET continue = 1
+			SET i = offset
+			PATCH_IF backwards THEN BEGIN
+				PATCH_IF NOT ~%chars%~ STR_EQ ~~ THEN BEGIN 
+					WHILE i > 0 AND continue BEGIN
+						SET i -= 1
+						READ_ASCII i peek (1)
+						SET continue = INDEX(CASE_SENSITIVE EXACT_MATCH ~%peek%~ ~%chars%~) >= 0
+					END
+				END ELSE PATCH_IF NOT ~%char_rx%~ STR_EQ ~~ THEN BEGIN
+					WHILE i > 0 AND continue BEGIN
+						SET i -= 1
+						READ_ASCII i peek (1)
+						SET continue = NOT ~%peek%~ STRING_CONTAINS_REGEXP ~%char_rx%~
+					END						
+				END 
+				PATCH_IF continue THEN BEGIN
+					SET length = offset
+				END ELSE BEGIN	
+					SET length = offset - i - 1
+				END
+			END ELSE BEGIN
+				PATCH_IF NOT ~%chars%~ STR_EQ ~~ THEN BEGIN 
+					WHILE i < srclength AND continue BEGIN
+						READ_ASCII i peek (1)
+						SET continue = INDEX(CASE_SENSITIVE EXACT_MATCH ~%peek%~ ~%chars%~) >= 0
+						SET i += 1
+					END
+				END ELSE PATCH_IF NOT ~%char_rx%~ STR_EQ ~~ THEN BEGIN
+					WHILE i < srclength AND continue BEGIN
+						READ_ASCII i peek (1)
+						SET continue = NOT ~%peek%~ STRING_CONTAINS_REGEXP ~%char_rx%~
+						SET i += 1
+					END						
+				END
+				PATCH_IF continue THEN BEGIN
+					SET length = srclength - offset
+				END ELSE BEGIN	
+					SET length = i - 1 - offset
+				END
+			END
+		END
+	END
+	
+	
+	
+/** Calculates the length of the longest segment in the input string which starts at the given offset
+  * and in which all characters match the given regexp (or character list).
+  * If neither %chars% nor %char_rx% argument is specified, the length of the longest whitespace segment
+  * is calculated.
+  */
+DEFINE_ACTION_FUNCTION string_segment_length
+	INT_VAR 
+		/** Offset in the %string% marking the start of the calculated segment. */
+		offset = 0 
+		/** If non-zero, reading happens in the reverse direction:
+		  * the calculated segment must preceed %offset%, rather than follow it. */
+		backwards = 0
+	STR_VAR
+		/** The input string on which the function operates. */
+		string = ~~
+		/** A string treated as a list of individual characters allowed in the segment. */
+		chars = ~~
+		/** Regular expression which all characters in the segment must match (if specified). */
+		char_rx = ~~
+	RET
+		/** Length of the longest segment starting with %offset% in which all characters 
+		  * match %chars%/%char_rx%. */ 
+		length
+		/** Length of the input buffer, returned here simply for convenience, as the caller will
+		  * almost always want to compare the prefix length with the total length of the string. */
+		srclength
+		/** First character in the buffer after offset which does not match %char_rx%/%chars%
+		  * (at offset offset + %length%). If %length% == %srclength% then peek == ~~. */
+		peek
+	BEGIN
+		OUTER_PATCH ~%string%~ BEGIN
+			LPF buffer_segment_length 
+				INT_VAR offset = offset backwards = backwards
+				STR_VAR chars = EVALUATE_BUFFER ~%chars%~ char_rx = EVALUATE_BUFFER ~%char_rx%~
+				RET length srclength peek
+			END
+		END
+	END
+	
+	
+
+/** Calculates the length of the longest segment in the input string which starts at the given offset
+  * and in which all characters match the given regexp (or character list).
+  * If neither %chars% nor %char_rx% argument is specified, the length of the longest whitespace segment
+  * is calculated.
+  */
+DEFINE_PATCH_FUNCTION string_segment_length
+	INT_VAR 
+		/** Offset in the %string% marking the start of the calculated segment. */
+		offset = 0 
+		/** If non-zero, reading happens in the reverse direction:
+		    the calculated segment must preceed %offset%, rather than follow it. */
+		backwards = 0
+	STR_VAR
+		/** The input string on which the function operates. */
+		string = ~~
+		/** A string treated as a list of individual characters allowed in the segment. */
+		chars = ~~
+		/** Regular expression which all characters in the segment must match (if specified). */
+		char_rx = ~~
+	RET
+		/** Length of the longest segment starting with %offset% in which all characters 
+		    match %chars%/%char_rx%. */ 
+		length
+		/** Length of the input buffer, returned here simply for convenience, as the caller will
+		  * almost always want to compare the prefix length with the total length of the string. */
+		srclength
+		/** First character in the buffer after offset which does not match %char_rx%/%chars%
+		  * (at offset offset + %length%). If %length% == %srclength% then peek == ~~. */
+		peek
+	BEGIN
+		INNER_PATCH ~%string%~ BEGIN
+			LPF buffer_segment_length 
+				INT_VAR offset = offset backwards = backwards
+				STR_VAR chars = EVALUATE_BUFFER ~%chars%~ char_rx = EVALUATE_BUFFER ~%char_rx%~
+				RET length srclength peek
+			END
+		END
+	END
+	
+	
+
+/** Moves the %offset% variable to the end of the longest whitespace segment in the patch buffer
+  * starting at %offset%.
+  */
+DEFINE_PATCH_FUNCTION skip_buffer_whitespace 
+	INT_VAR 
+		/** Offset in the buffer at which the reading starts. */
+		offset = 0
+	RET 
+		/** Offset of the first non-whitespace character following initial %offset% value. */
+		offset 
+		/** Length of the buffer. */
+		srclength 
+		/** The first non-whitespace character (at offset %offset%) or an empty string
+		  * if %offset% was followed only by whitespace. */
+		peek
+	BEGIN
+		PATCH_IF offset < 0 THEN BEGIN
+			SET offset = cursor
+		END
+		LPF buffer_segment_length 
+			INT_VAR offset = offset 
+			STR_VAR chars = EVALUATE_BUFFER ~%WHITESPACE_CHARS%~
+			RET length srclength peek END
+		SET offset += length
+	END
+
+
+
+/** Reads a segment from the patch buffer which starts at a predetermined offset %offset%
+  * and ends with one of the specified characters. Returned token will be the longest
+  * substring starting at %offset% which does not contain any of the characters in string
+  * %non_token_chars%.
+  */
+DEFINE_PATCH_FUNCTION next_buffer_token
+	INT_VAR 
+		/** Offset of the first character of the returned substring. */
+		offset = 0
+	STR_VAR 
+		/** A string treated as a list of characters which terminate reading when encountered. */
+		non_token_chars = ~~
+	RET 
+		/** Offset of the first character after %token%; 
+		  * Returned value - initial value == STRING_LENGTH ~%token%~. */
+		offset 
+		/** Length of the buffer. */
+		srclength 
+		/** Fragment of the buffer starting at initial %offset% and ending at the first occurence
+		  * of any characters from the string %non_token_chars%. */
+		token
+	BEGIN
+		PATCH_IF offset < 0 THEN BEGIN
+			SET offset = cursor
+		END
+		PATCH_IF ~%non_token_chars%~ STR_EQ ~~ THEN BEGIN
+			TEXT_SPRINT non_token_chars ~%WHITESPACE_CHARS%,;~
+		END
+	
+		LPF buffer_segment_length
+			INT_VAR offset = offset
+			STR_VAR chars = EVALUATE_BUFFER ~%WHITESPACE_CHARS%~
+			RET length srclength peek END
+		TEXT_SPRINT token ~~
+		PATCH_IF offset + length < srclength THEN BEGIN
+			LPF buffer_segment_length
+				INT_VAR offset = offset + length
+				STR_VAR char_rx = EVALUATE_BUFFER ~[^%non_token_chars%]~
+				RET token_length = length END
+			PATCH_IF token_length > 0 THEN BEGIN
+				READ_ASCII (offset + length) token (token_length) 
+				SET offset += length + token_length
+			END
+		END
+	END
+
+
+
+
+
+
+/** Removes all leading whitespace from a given string. */
+DEFINE_ACTION_FUNCTION trim_string_front 
+	STR_VAR string = ~~
+	RET res 
+	BEGIN
+		OUTER_SET length = STRING_LENGTH ~%string%~
+		OUTER_SET i = 0 - 1
+		OUTER_TEXT_SPRINT substring ~ ~
+		ACTION_IF length THEN BEGIN
+			OUTER_WHILE i < length - 1 AND NOT ~%substring%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%$~ BEGIN
+				OUTER_SET i += 1
+				LAF SUBSTRING 
+					INT_VAR start = i length = 1 
+					STR_VAR string = EVALUATE_BUFFER ~%string%~ 
+					RET substring END
+			END
+			ACTION_IF NOT ~%substring%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%$~ THEN BEGIN
+				OUTER_SET i += 1
+			END
+			ACTION_IF i THEN BEGIN
+				LAF SUBSTRING
+					INT_VAR start = i length = length - i
+					STR_VAR string = EVALUATE_BUFFER ~%string%~
+					RET string = substring END
+			END
+		END
+		OUTER_TEXT_SPRINT res ~%string%~
+	END
+
+
+
+/** Removes all leading whitespace from a given string. */
+DEFINE_PATCH_FUNCTION trim_string_front 
+	STR_VAR string = ~~
+	RET res
+	BEGIN
+		INNER_ACTION BEGIN 
+			LAF trim_string_front STR_VAR stirng = EVALUATE_BUFFER ~%string%~ RET res END 
+		END
+	END
+
+
+
+/** Removes all trailing whitespace from a given string. */
+DEFINE_ACTION_FUNCTION trim_string_back 
+	STR_VAR string = ~~
+	RET res 
+	BEGIN
+		OUTER_SET length = STRING_LENGTH ~%string%~
+		OUTER_SET i = length
+		OUTER_TEXT_SPRINT substring ~ ~
+		
+		ACTION_IF length THEN BEGIN
+			OUTER_WHILE i > 0 AND NOT ~%substring%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%$~ BEGIN
+				OUTER_SET i -= 1
+				LAF SUBSTRING 
+					INT_VAR start = i length = 1 
+					STR_VAR string = EVALUATE_BUFFER ~%string%~ 
+					RET substring END
+
+			END
+			ACTION_IF ~%substring%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%$~ THEN BEGIN			
+				OUTER_SET i += 1 
+			END
+			ACTION_IF i < length THEN BEGIN
+				LAF SUBSTRING
+					INT_VAR start = 0 length = i
+					STR_VAR string = EVALUATE_BUFFER ~%string%~
+					RET string = substring END
+				OUTER_SET length = STRING_LENGTH ~%string%~
+			END
+		END
+		OUTER_TEXT_SPRINT res ~%string%~
+	END
+
+
+
+/** Removes all trailing whitespace from a given string. */
+DEFINE_PATCH_FUNCTION trim_string_back 
+	STR_VAR string = ~~
+	RET res
+	BEGIN
+		INNER_ACTION BEGIN 
+			LAF trim_string_back STR_VAR string = EVALUATE_BUFFER ~%string%~ RET res END
+		END
+	END
+
+
+
+/** Removes all leading and trailing whitespace from a given string. */
+DEFINE_ACTION_FUNCTION trim_string 
+	STR_VAR string = ~~
+	RET res
+	BEGIN
+		LAF trim_string_front STR_VAR string = EVALUATE_BUFFER ~%string%~ RET res END
+		LAF trim_string_back STR_VAR string = EVALUATE_BUFFER ~%res%~ RET res END
+	END
+
+
+
+/** Removes all leading and trailing whitespace from a given string. */
+DEFINE_PATCH_FUNCTION trim_string 
+	STR_VAR string = ~~
+	RET res
+	BEGIN
+		INNER_ACTION BEGIN 
+			LAF trim_string STR_VAR string = EVALUATE_BUFFER ~%string%~ RET res END
+		END
+	END
+	
+	
+	
+	
+	
+	
+END //STRINGUTIL

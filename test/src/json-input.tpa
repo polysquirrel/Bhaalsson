@@ -1,0 +1,58 @@
+OUTER_TEXT_SPRINT json ~[
+{ 
+	"name": "Fencing",
+	"*":   { 
+		"AC": {"Mis": 0, "Pie": 1, "Sla": 1, "Cru": 1}, 
+		"crit": 1, "speed": 2,
+		"main hand": {"THAC0": 1, "Dmg": 1}
+	},
+	"**":  { 
+		"AC": {"Mis": 0, "Pie": 1, "Sla": 1, "Cru": 1}, 
+		"crit": 3, "speed": 3,
+		"main hand": {"THAC0": 3, "Dmg": 1}
+	}
+},
+{
+	"name": "Two-handed weapons",
+	"*":   {
+		"AC": {"Mis": 0, "Pie": 1, "Sla": 1, "Cru": 1},
+		"crit": 0, "speed": 1,
+		"main hand": {"THAC0": 0, "Dmg": 1}
+	},
+	"**":  {
+		"AC": {"Mis": 0, "Pie": 1, "Sla": 1, "Cru": 1},
+		"crit": 0, "speed": 1,
+		"main hand": {"THAC0": 0, "Dmg": 1, "APR": "+0.5"}
+	}
+},
+{
+	"name": "Shields",
+	"*":   {
+		"AC": {"Mis": 1, "Pie": 1, "Sla": 0, "Cru": 0},
+		"no penalties": [ "APR" ]
+	},
+	"**":  {
+		"AC": {"Mis": 1, "Pie": 1, "Sla": 1, "Cru": 1},
+		"no penalties": [ "APR", "THAC0", "speed" ]
+	}
+},
+{
+	"name": "Dual-wielding",
+	"-":   {
+		"main hand": { "THAC0": -2, "Dmg": 0 },
+		"off hand": { "APR": "0" }
+	},
+	"*":   {
+		"main hand": { "THAC0": -2, "Dmg": 0 },
+		"off hand": { "APR": "0.5", "THAC0": -4, "Dmg": -2 }
+	},
+	"**":  {
+		"main hand": {"THAC0": 0, "Dmg": 0},
+		"off hand": { "APR": "1", "THAC0": -3, "Dmg": -1 }
+	},
+	"***": {
+		"main hand": { "THAC0": 0, "Dmg": 0 },
+		"off hand": { "APR": "1", "THAC0": -2, "Dmg": 0 }
+	}
+}
+]~	 

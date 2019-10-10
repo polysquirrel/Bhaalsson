@@ -1,0 +1,6 @@
+item    name  desc  lbs type damage THAC0 stack lost%
+AROW01  -     -     0   M    1d4+1  0     80    50
+BOLT01  -     -     0   M    1d4+1  0     80    50
+BULL01  -     -     0   CM   1d6    0     80    20
+
+//damage type: missile - 4; blunt missile - 9

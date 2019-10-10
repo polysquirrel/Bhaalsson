@@ -1,0 +1,19 @@
+item      name  desc  prof lbs range speed APR type DMG THAC0 2H <STR <DEX look
+//recurve bow (short bow)
+BOW05     @0152 @1151 104  1   75    5     2   M    0   0     Y  9    7    BS
+//composite short bow
+HEMASB01  @0152 @1152 104  1   90    5     2   M    2   0     Y  14   7    BS
+//longbow
+BOW03     -     @1153 104  2   80    6     1.5 M    2   -1    Y  12   5    BW
+//warbow
+HEMAWB01  -     @1154 104  2   100   7     1.5 M    3   -1    Y  16   5    BW
+//heavy warbow (composite longbow)
+BOW01     @0155 @1155 104  3   110   8     1.5 M    4   -1    Y  18   5    BW
+//light crossbow
+XBOW04    -     @1161 103  4   90    8     1   M    2   1     Y  5    5    CB
+//heavy crossbow
+XBOW01    -     @1162 103  5   110   10    0.5 M    5   4     Y  5    5    CB
+//sling
+SLNG01    -     @1171 107  0   60    10    -   CM   0!  -3    N  0    10   SL
+
+//old proficiecies: 104 - longbow; 105 - shortbow

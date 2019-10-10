@@ -1,0 +1,9 @@
+item      name  desc  prof lbs stack lost% range speed APR crit type damage  THAC0 meleedmg attack <STR <DEX look
+//dart
+DART01    -     @1101 106  0   160   75    20    4     2   0    M    1d2     0     -        -      0    6    -
+//throwing dagger
+DAGG25    -     @1102 106  0   40    40    50    5     1.5 0    M    1d6-1   0     -        -      6    10   DD
+//throwing axe
+AX1H04    -     @1103 105  1   20    20    60    8     1   0    M    1d9-1!  -2    -        -      8    12   AX
+
+//old proficiencies: 105 - shortbow; 92 - axe
