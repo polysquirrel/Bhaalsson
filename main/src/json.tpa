@@ -1,5 +1,5 @@
-ACTION_IF NOT VARIABLE_IS_SET JSON4WEIDU THEN BEGIN
-OUTER_TEXT_SPRINT JSON4WEIDU ~JSON4WEIDU~ 
+ACTION_IF NOT VARIABLE_IS_SET BHAALSSON THEN BEGIN
+OUTER_TEXT_SPRINT BHAALSSON ~BHAALSSON~ 
 
 ACTION_IF NOT VARIABLE_IS_SET BHAALSSON_DIR THEN BEGIN
 	OUTER_TEXT_SPRINT BHAALSSON_DIR ~%MOD_FOLDER%/bhaalsson~
@@ -19,19 +19,28 @@ INCLUDE ~%BHAALSSON_DIR%/stringutil.tpa~
   */
 OUTER_TEXT_SPRINT JSON_PROPERTY_SEPARATOR ~.~
 
-/** Regexp matching any sequence of '\' terminated by a character other than '"' and '\', 
-  * or an odd sequence of '\' terminated by '"'. */
-OUTER_TEXT_SPRINT JSON_STRING_ATOM_RX ~\(\\*[^\"]\|\([^\]\\\(\\\\\)*"\)\)~
-/** Any string surrounded by a pair of '"' characters, in which all '"' are escaped with a '\'.*/
-OUTER_TEXT_SPRINT JSON_STRING_RX ~"\(\(\\\(\\\\\)*"\)?\(%JSON_STRING_ATOM_RX%*\)\(\(\\\\\)*\)\)"~ 
-/** A regular expression string in the format of [rR]"json string", where `"json_string"` is
-  * a valid json string. */
-OUTER_TEXT_SPRINT JSON_REGEXP_RX ~[rR]%JSON_STRING_RX%~
-
 OUTER_TEXT_SPRINT JSON_NULL ~null~
 
 OUTER_TEXT_SPRINT JSON_TRUE ~true~
 OUTER_TEXT_SPRINT JSON_FALSE ~false~
+
+/** Regexp matching any sequence of '\' terminated by a character other than '"' and '\', 
+  * or an odd sequence of '\' terminated by '"'. */
+OUTER_TEXT_SPRINT JSON_STRING_ATOM_RX ~\(\\*[^\"]\|\([^\]\\\(\\\\\)*"\)\)~
+
+/** Any string surrounded by a pair of '"' characters, in which all '"' are escaped with a '\'.*/
+OUTER_TEXT_SPRINT JSON_STRING_RX ~"\(\(\\\(\\\\\)*"\)?\(%JSON_STRING_ATOM_RX%*\)\(\(\\\\\)*\)\)"~ 
+
+/** A regular expression string matching regular expressions given in the format of 
+  * [rR]"json string", where `"json_string"` is a valid json string. */
+OUTER_TEXT_SPRINT JSON_REGEXP_RX ~[rR]%JSON_STRING_RX%~
+
+/** A regular expression matching a weidu number literal with an optional sign character. */
+OUTER_TEXT_SPRINT JSON_NUMBER_RX ~\([-+]?0x[0123456789abcdef]+\|0o[01234567]+\|[0123456789]+\)~
+
+/** A regular expression matching any json+ atomic values: Booleans, integers, strings, 
+  * regexps and translation string references. */
+OUTER_TEXT_SPRINT JSON_ATOM_RX ~\(null\|true\|false\|%JSON_NUMBER_RX%\|%JSON_STRING_RX%\|%JSON_REGEXP_RX%\|\)~
 
 OUTER_SET MAX_INT = BIT31 - 1 //2147483647
  
@@ -621,6 +630,26 @@ DEFINE_PATCH_FUNCTION json_string
 		END
 	END
 
+
+
+/** Creates a json literal for a translation string with the given key. */
+DEFINE_ACTION_FUNCTION json_translation
+	STR_VAR tra = ~~
+	RET res
+	BEGIN
+		OUTER_TEXT_SPRINT res ~@%tra%~
+	END
+	
+	
+	
+/** Creates a json literal for a translation string with the given key. */	
+DEFINE_PATCH_FUNCTION json_translation
+	STR_VAR tra = ~~
+	RET res
+	BEGIN
+		TEXT_SPRINT res ~@%tra%~
+	END
+
 	
 
 /** Formats the given value as json. If it is a valid integer, it is left intact.
@@ -992,6 +1021,29 @@ DEFINE_PATCH_FUNCTION skip_json_regexp
 	
 	
 
+DEFINE_PATCH_FUNCTION skip_json_translation
+	INT_VAR offset = 0 - 1
+	RET offset skipped
+	BEGIN
+		LPM skip_whitespace_before_json
+		PATCH_IF ~%peek%~ STR_EQ ~@~ THEN BEGIN
+			SET i = offset + 1
+			TEXT_SPRINT peek ~0~
+			WHILE i < srclength AND NOT ~%peek%~ STRING_MATCHES_REGEXP ~[0123456789]~ BEGIN
+				READ_ASCII i peek (1)
+				SET i += 1
+			END
+			SET skipped = i - start
+			PATCH_IF skipped > 1 THEN BEGIN
+				SET offset = i
+			END ELSE BEGIN
+				SET skipped = 0
+			END
+		END
+	END
+	
+	
+	
 DEFINE_PATCH_FUNCTION skip_json_array
 	INT_VAR offset = 0 - 1
 	RET offset skipped size
@@ -1366,12 +1418,67 @@ DEFINE_PATCH_FUNCTION read_json_regexp
 	END
 	
 	
+
+/** Reads a literal key for a json translation string from the input at the given offset.
+  * The format is the same as used by weidu for translation reference literals: @<number>.
+  * Any whitespace between the specified offset and the '@' character is skipped.
+  */
+DEFINE_PATCH_FUNCTION read_raw_json_translation
+	INT_VAR 
+		/** The offset in the patch buffer where the reading starts. */
+		offset = 0
+	RET 
+		/** The offset in the patch buffer immediately after the read translation literal. */
+		offset
+		/** The tra literal as it appears in input and would be used in tpa: @<number>. */
+		res
+	BEGIN
+		LPM skip_whitespace_before_json
+		LPF skip_json_translation INT_VAR offset = start RET offset skipped END
+		PATCH_IF NOT skipped THEN BEGIN
+			LPF report_invalid_json
+				STR_VAR msg = ~read_raw_json_translation: expected a translation string reference but got '%peek%'~
+			END
+		END
+		READ_ASCII start res (skipped)
+	END
+	
+	
+	
+/** Reads a literal key for a json translation string from the input at the given offset
+  * and immediately resolves it to a string from the appropriate tra file as per (AT var).
+  * The format is the same as used by weidu for translation reference literals: @<number>.
+  * Any whitespace between the specified offset and the '@' character is skipped.
+  */
+DEFINE_PATCH_FUNCTION read_json_translation
+	INT_VAR 
+		/** The offset in the patch buffer where the reading starts. */
+		offset = 0
+	RET 
+		/** The offset in the patch buffer immediately after the read translation literal. */
+		offset
+		/** The resolves translation string from the most appropriate language file. */
+		res
+	BEGIN
+		LPM skip_whitespace_before_json
+		LPF skip_json_translation INT_VAR offset = start RET offset skipped END
+		PATCH_IF NOT skipped THEN BEGIN
+			LPF report_invalid_json
+				STR_VAR msg = ~read_json_translation: expected a translation string reference but got '%peek%'~
+			END
+		END
+		READ_ASCII (start + 1) key (skipped - 1)
+		SPRINT res (AT key)
+	END
+	
+	
 	
 /** Reads the json value following the given offset in the current patch buffer.
   * Any leading whitespace is ignored. The value must be either a boolean, integer or a string;
   * otherwise an error is raised. If the value is a boolean, it is returned as either zero or one.
   * Integral numbers are returned as integers, while strings are unquoted and unescaped to their
-  * 'normal' selves. Additionally, a string value may be preceeded by a 'r' or 'R' character
+  * 'normal' selves and translation string references are resolved before returning the actual
+  * translation string. Additionally, a string value may be preceeded by a 'r' or 'R' character
   * marking it as a regular expression. This function however does not distinguish between
   * a regular string and a regexp, simply ignoring the 'r'/'R' character before a string value.
   * This function is used internally by `read_json` and wherever an atomict json value is expected
@@ -1399,6 +1506,9 @@ DEFINE_PATCH_FUNCTION read_json_atom
 			END
 			~[+-0123456789]~ BEGIN
 				LPF read_json_number INT_VAR offset = start RET offset res END
+			END
+			~@~ BEGIN
+				LPF read_json_translation INT_VAR offset = start RET offset res END
 			END
 			~r~ ~R~ BEGIN
 				LPF read_json_regexp INT_VAR offset = start RET offset res END
@@ -1878,10 +1988,7 @@ DEFINE_ACTION_FUNCTION is_json_string
 	STR_VAR json = ~~
 	RET is_string
 	BEGIN
-		OUTER_SET is_string = 1
-		ACTION_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_STRING_RX%%WHITESPACE_RX%$~ THEN BEGIN
-			OUTER_SET is_string = 0
-		END
+		OUTER_SET is_string = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_STRING_RX%%WHITESPACE_RX%$~ 
 	END
 	
 	
@@ -1893,45 +2000,64 @@ DEFINE_PATCH_FUNCTION is_json_string
 	STR_VAR json = ~~
 	RET is_string
 	BEGIN
-		SET is_string = 1
-		PATCH_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_STRING_RX%%WHITESPACE_RX%$~ THEN BEGIN
-			SET is_string = 0
-		END
+		SET is_string = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_STRING_RX%%WHITESPACE_RX%$~
 	END
 	
 	
 
 /** Sets the %is_regexp% return variable to zero if the passed %json% argument is not a valid
   * regular expression, or to one otherwise. A regular expression is a json string preceded
-  * immediately by a 'r' or 'R' character. 
+  * immediately by a 'r' or 'R' character. Any leading or trailing whitespace is ignored. 
   */
 DEFINE_ACTION_FUNCTION is_json_regexp
 	STR_VAR json = ~~
 	RET is_regexp
 	BEGIN
-		OUTER_SET is_regexp = 1
-		ACTION_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_REGEXP_RX%%WHITESPACE_RX%$~ THEN BEGIN
-			OUTER_SET is_regexp = 0
-		END
+		OUTER_SET is_regexp = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_REGEXP_RX%%WHITESPACE_RX%$~ 
 	END
 
 
 
 /** Sets the %is_regexp% return variable to zero if the passed %json% argument is not a valid
   * regular expression, or to one otherwise. A regular expression is a json string preceded
-  * immediately by a 'r' or 'R' character. 
+  * immediately by a 'r' or 'R' character. Any leading or trailing whitespace is ignored.
   */
 DEFINE_PATCH_FUNCTION is_json_regexp
 	STR_VAR json = ~~
 	RET is_regexp
 	BEGIN
-		SET is_regexp = 1
-		PATCH_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_REGEXP_RX%%WHITESPACE_RX%$~ THEN BEGIN
-			SET is_regexp = 0
-		END
+		SET is_regexp = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_REGEXP_RX%%WHITESPACE_RX%$~ 
+	END
+
+
+
+/** Sets the %is_tra% return variable to zero if the passed %json% argument is not a valid
+  * translation string reference, or one otherwise. The translation reference is not resolved
+  * and the existance of its target string is not checked, only the format is verified for
+  * correctness. Any leading or trailing whitespace in the string is ignored.
+  */
+DEFINE_ACTION_FUNCTION is_json_translation
+	STR_VAR json = ~~
+	RET is_tra
+	BEGIN
+		OUTER_SET is_tra = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%@[0123456789]+%WHITESPACE_RX%$~
 	END
 	
+
+
+/** Sets the %is_tra% return variable to zero if the passed %json% argument is not a valid
+  * translation string reference, or one otherwise. The translation reference is not resolved
+  * and the existance of its target string is not checked, only the format is verified for
+  * correctness. Any leading or trailing whitespace in the string is ignored.
+  */
+DEFINE_PATCH_FUNCTION is_json_translation
+	STR_VAR json = ~~
+	RET is_tra
+	BEGIN
+		SET is_tra = NOT ~%json%~ STRING_MATCHES_REGEXP ~^WHITESPACE_RX%%@[0123456789]+%WHITESPACE_RX%$~
+	END
 	
+
 	
 /** Sets the %is_atom% return variable to non-zero iff %json% is a valid json string, number, boolean
   * or null value. A string value may be additionally preceded by an ignored 'r'/'R' character,
@@ -1942,16 +2068,7 @@ DEFINE_ACTION_FUNCTION is_json_atom
 	STR_VAR json = ~~
 	RET is_atom
 	BEGIN
-		OUTER_SET is_atom = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%\(null\|true\|false\)%WHITESPACE_RX%$~
-		ACTION_IF NOT is_atom THEN BEGIN
-			LAF is_json_number STR_VAR json = EVAL ~%json%~ RET is_atom = is_number END
-			ACTION_IF NOT is_atom THEN BEGIN
-				LAF is_json_string STR_VAR json = EVAL ~%json%~ RET is_atom = is_string END
-				ACTION_IF NOT is_atom THEN BEGIN
-					LAF is_json_regexp STR_VAR json = EVAL ~%json%~ RET is_atom = is_regexp END
-				END
-			END
-		END
+		OUTER_SET is_atom = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_ATOM_RX%%WHITESPACE_RX%$~
 	END
 	
 	
@@ -1963,9 +2080,7 @@ DEFINE_PATCH_FUNCTION is_json_atom
 	STR_VAR json = ~~
 	RET is_atom
 	BEGIN
-		INNER_ACTION BEGIN
-			LAF is_json_atom STR_VAR json = EVAL ~%json%~ RET is_atom END
-		END
+		SET is_atom = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_ATOM_RX%%WHITESPACE_RX%$~
 	END
 	
 	
@@ -2413,10 +2528,41 @@ DEFINE_PATCH_FUNCTION json_to_regexp
 
 	
 
-/** Converts a json atomic value - a boolean, number, string or regexp - into a weidu 
-  * variable in the manner defined by the `read_json_atom` function. Strings and regular
-  * expressions are unquoted in the process while boolean values are converted to `0` and `1`
-  * based on their value.
+/** Resolve the given a weidu/bhaalsson translation string reference literal to the
+  * associated string for the chosen language. 
+  */
+DEFINE_ACTION_FUNCTION json_translation_value
+	STR_VAR json = ~~
+	RET res
+	BEGIN
+		OUTER_PATCH ~%json%~ BEGIN
+			LPF read_json_translation RET offset res END
+			LPM read_json_must_be_whole_buffer
+		END
+	END
+
+	
+
+/** Resolve the given a weidu/bhaalsson translation string reference literal to the
+  * associated string for the chosen language. 
+  */
+DEFINE_PATCH_FUNCTION json_translation_value
+	STR_VAR json = ~~
+	RET res
+	BEGIN
+		INNER_PATCH ~%json%~ BEGIN
+			LPF read_json_translation RET offset res END
+			LPM read_json_must_be_whole_buffer
+		END
+	END
+	
+	
+	
+/** Converts a json atomic value - a boolean, number, string, translation string or regexp - 
+  * into a weidu  variable in the manner defined by the `read_json_atom` function. 
+  * Strings and regular expressions are unquoted in the process, translation strings are resolved
+  * and boolean values are converted to `0` and `1` based on their value. Only integer values 
+  * are left as-is.
   */
 DEFINE_ACTION_FUNCTION json_value
 	STR_VAR json = ~~
@@ -2430,10 +2576,11 @@ DEFINE_ACTION_FUNCTION json_value
 
 
 
-/** Converts a json atomic value - a boolean, number, string or regexp - into a weidu 
-  * variable in the manner defined by the `read_json_atom` function. Strings and regular
-  * expressions are unquoted in the process while boolean values are converted to `0` and `1`
-  * based on their value.
+/** Converts a json atomic value - a boolean, number, string, translation string or regexp - 
+  * into a weidu  variable in the manner defined by the `read_json_atom` function. 
+  * Strings and regular expressions are unquoted in the process, translation strings are resolved
+  * and boolean values are converted to `0` and `1` based on their value. Only integer values 
+  * are left as-is.
   */
 DEFINE_PATCH_FUNCTION json_value
 	STR_VAR json = ~~
@@ -2810,14 +2957,27 @@ DEFINE_PATCH_FUNCTION json_array_at
 	END
 
 
-	
+
+/**	Retrieves the raw json expression associated with the given field of a json object.
+  * The field can be given either as a quoted string (higher precedence) or a unquoted 
+  * string value. If the object does not have a field of the specified name, the default
+  * value is returned instead. If the passed %json% expression is not a valid json object,
+  * component installation will fail.
+  */
 DEFINE_ACTION_FUNCTION json_raw_field	
 	STR_VAR
+		/** The input json object. */
 		json = ~~
+		/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
 		field = ~~
+		/** A json string with the quoted name of the field to retrieve. */
 		rawfield = ~~
+		/** Any string (not necessarily a valid json expression) to return if the object
+		  * does not declare the field of the specified name. Defaults to an empty string. */
 		default = ~~
-	RET	res
+	RET	
+		/** The json expression associated with the specified field or %default% if no such field exists. */
+		res
 	BEGIN
 		OUTER_PATCH ~%json%~ BEGIN
 			PATCH_IF ~%rawfield%~ STR_EQ ~~ THEN BEGIN
@@ -2855,13 +3015,26 @@ DEFINE_ACTION_FUNCTION json_raw_field
 	
 	
 	
-DEFINE_PATCH_FUNCTION json_raw_field
+/**	Retrieves the raw json expression associated with the given field of a json object.
+  * The field can be given either as a quoted string (higher precedence) or a unquoted 
+  * string value. If the object does not have a field of the specified name, the default
+  * value is returned instead. If the passed %json% expression is not a valid json object,
+  * component installation will fail.
+  */
+DEFINE_PATCH_FUNCTION json_raw_field	
 	STR_VAR
+		/** The input json object. */
 		json = ~~
-		rawfield = ~~
+		/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
 		field = ~~
+		/** A json string with the quoted name of the field to retrieve. */
+		rawfield = ~~
+		/** Any string (not necessarily a valid json expression) to return if the object
+		  * does not declare the field of the specified name. Defaults to an empty string. */
 		default = ~~
-	RET res
+	RET	
+		/** The json expression associated with the specified field or %default% if no such field exists. */
+		res
 	BEGIN
 		INNER_ACTION BEGIN
 			LAF json_raw_field 
@@ -2876,11 +3049,20 @@ DEFINE_PATCH_FUNCTION json_raw_field
 
 
 
-DEFINE_ACTION_FUNCTION json_field
+/**	Retrieves the converted value associated with the given field of a json object.
+  * If the passed %json% expression is not a valid json object or the object does not
+  * contain a field of this name, component installation will fail.
+  */
+DEFINE_ACTION_FUNCTION json_field	
 	STR_VAR
+		/** The input json object. */
 		json = ~~
+		/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
 		field = ~~
-	RET res
+	RET	
+		/** The value associated with the specified field converted from json as per 
+		  * the `json_value` function. */
+		res
 	BEGIN
 		LAF json_raw_field 
 			STR_VAR json = EVAL ~%json%~ field = EVAL ~%field%~
@@ -2893,11 +3075,20 @@ DEFINE_ACTION_FUNCTION json_field
 	
 
 	
+/**	Retrieves the converted value associated with the given field of a json object.
+  * If the passed %json% expression is not a valid json object or the object does not
+  * contain a field of this name, component installation will fail.
+  */
 DEFINE_PATCH_FUNCTION json_field	
 	STR_VAR
+		/** The input json object. */
 		json = ~~
+		/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
 		field = ~~
-	RET res
+	RET	
+		/** The value associated with the specified field converted from json as per 
+		  * the `json_value` function. */
+		res
 	BEGIN //todo: all these methods could better pass the json argument as patch buffer
 		INNER_ACTION BEGIN
 			LAF json_field 

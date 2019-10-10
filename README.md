@@ -85,7 +85,16 @@ and rational numbers.
 such as named constants for commonly used values. This support is currently
 very limited, but it is hoped to grow as the library becomes used.
 
-#### Regular expressions
+#### Translation reference
+A WeiDU literal for a translation string reference is honored as a json 
+expression. It is resolved whenever a json expression is converted to
+a weidu variable (at the exact places where a quoted string would be converted
+to its unquoted value):
+	
+	@42
+
+
+#### Regular expression
 A regular expression is a Json string preceded immediately by a `'R'` or `'r'`
 character:
 
@@ -666,11 +675,43 @@ it to a format usable in weidu.
 			/** The unquoted value of the regular expression. */
 		res
 
+	/** Reads a literal key for a json translation string from the input at the given offset.
+	  * The format is the same as used by weidu for translation reference literals: @<number>.
+	  * Any whitespace between the specified offset and the '@' character is skipped.
+	  */
+	DEFINE_PATCH_FUNCTION read_raw_json_translation
+		INT_VAR 
+			/** The offset in the patch buffer where the reading starts. */
+			offset = 0
+		RET 
+			/** The offset in the patch buffer immediately after the read translation literal. */
+			offset
+			/** The tra literal as it appears in input and would be used in tpa: @<number>. */
+			res
+
+	/** Reads a literal key for a json translation string from the input at the given offset
+	  * and immediately resolves it to a string from the appropriate tra file as per (AT var).
+	  * The format is the same as used by weidu for translation reference literals: @<number>.
+	  * Any whitespace between the specified offset and the '@' character is skipped.
+	  */
+	DEFINE_PATCH_FUNCTION read_json_translation
+		INT_VAR 
+			/** The offset in the patch buffer where the reading starts. */
+			offset = 0
+		RET 
+			/** The offset in the patch buffer immediately after the read translation literal. */
+			offset
+			/** The resolves translation string from the most appropriate language file. */
+			res
+
+
+
 	/** Reads the json value following the given offset in the current patch buffer.
 	  * Any leading whitespace is ignored. The value must be either a boolean, integer or a string;
 	  * otherwise an error is raised. If the value is a boolean, it is returned as either zero or one.
 	  * Integral numbers are returned as integers, while strings are unquoted and unescaped to their
-	  * 'normal' selves. Additionally, a string value may be preceeded by a 'r' or 'R' character
+	  * 'normal' selves. Translation string references are resolved and the actual translation string
+	  * is returned. Additionally, a string value may be preceeded by a 'r' or 'R' character
 	  * marking it as a regular expression. This function however does not distinguish between
 	  * a regular string and a regexp, simply ignoring the 'r'/'R' character before a string value.
 	  * This function is used internally by `read_json` and wherever an atomict json value is expected
@@ -886,6 +927,18 @@ expected type.
 	DEFINE_ACTION/PATCH_FUNCTION is_json_regexp
 		STR_VAR json = ~~
 		RET is_regexp
+
+
+	/** Sets the %is_tra% return variable to zero if the passed %json% argument is not a valid
+	  * translation string reference, or one otherwise. The translation reference is not resolved
+	  * and the existance of its target string is not checked, only the format is verified for
+	  * correctness. Any leading or trailing whitespace in the string is ignored.
+	  */
+	DEFINE_ACTION/PATCH_FUNCTION is_json_translation
+		STR_VAR json = ~~
+		RET is_tra
+
+
 
 	/** Sets the %is_atom% return variable to non-zero iff %json% is a valid json string, number, boolean
 	  * or null value. A string value may be additionally preceded by an ignored 'r'/'R' character,
@@ -1125,6 +1178,43 @@ in a string.
 		RET 
 			/** Required element as json or %default% if no such element exists. */
 			res 
+
+
+	/**	Retrieves the raw json expression associated with the given field of a json object.
+	  * The field can be given either as a quoted string (higher precedence) or a unquoted 
+	  * string value. If the object does not have a field of the specified name, the default
+	  * value is returned instead. If the passed %json% expression is not a valid json object,
+	  * component installation will fail.
+	  */
+	DEFINE_ACTION/PATCH_FUNCTION json_raw_field	
+		STR_VAR
+			/** The input json object. */
+			json = ~~
+			/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
+			field = ~~
+			/** A json string with the quoted name of the field to retrieve. */
+			rawfield = ~~
+			/** Any string (not necessarily a valid json expression) to return if the object
+			  * does not declare the field of the specified name. Defaults to an empty string. */
+			default = ~~
+		RET	
+			/** The json expression associated with the specified field or %default% if no such field exists. */
+			res
+
+	/**	Retrieves the converted value associated with the given field of a json object.
+	  * If the passed %json% expression is not a valid json object or the object does not
+	  * contain a field of this name, component installation will fail.
+	  */
+	DEFINE_ACTION/PATCH_FUNCTION json_field	
+		STR_VAR
+			/** The input json object. */
+			json = ~~
+			/** A string with unquoted name of the field to retrieve, checked if %rawfield% is empty. */
+			field = ~~
+		RET	
+			/** The value associated with the specified field converted from json as per 
+			  * the `json_value` function. */
+			res
 
 
 	/** Returns a value of a json element of the input json string, defined by its 'path'

@@ -4,6 +4,7 @@ AUTHOR ~polymorphedsquirrel~
 
 VERSION ~TEST~ 
 
+
 ALWAYS 
 	OUTER_TEXT_SPRINT BHAALSSON_DIR ~%MOD_FOLDER%~
 	INCLUDE ~%MOD_FOLDER%/json.tpa~
@@ -34,6 +35,8 @@ ALWAYS
 			END
 		END
 END
+
+LANGUAGE ~English~ ~english~ ~%MOD_FOLDER%/tra/english/setup.tra~
 
 
 
@@ -325,7 +328,18 @@ INSTALL_BY_DEFAULT
 	LAF is_json_string STR_VAR json = ~" \\" ""~ RET res = is_string END
 	LAM should_equal
 	
+	
+	
+BEGIN ~is_json_translation should recognize translation reference literals~
+INSTALL_BY_DEFAULT
+	OUTER_SET expect = 1
+	LAF is_json_translation STR_VAR json = ~@042~ RET res = is_tra END
+	LAM should_equal
+	
+	LAF is_json_translation STR_VAR json = ~@000000000000~ RET res = is_tra END
+	LAM should_equal
 
+	
 	
 BEGIN ~is_json_array should recognize json arrays~
 INSTALL_BY_DEFAULT
@@ -552,7 +566,15 @@ string2"~ RET res END
 	WITH DEFAULT END
 	LAM should_equal
 
+
+
+BEGIN ~json_translation_value should correctly resolve translation string references~
+INSTALL_BY_DEFAULT
+	OUTER_TEXT_SPRINT expect ~The answer to the question of life, universe and everything is '*'~
+	LAF json_translation_value STR_VAR json = ~@042~ RET res END
+	LAM should_equal
 	
+
 
 BEGIN ~json_to_raw_array should read json array and store elements as json~
 INSTALL_BY_DEFAULT
