@@ -1,6 +1,6 @@
-#Bhaal's son#
+# Bhaal's son
 
-##About##
+## About
 *Bhaal's son* (or *bhaalsson* in file names) is a parser and formatter
 of `Json` data for *WeiDU*, the scripting language of Infinity Engine mods.
 Its creation was motivated by very limited flexibility of 2da configuration
@@ -20,17 +20,17 @@ languages) and treating Json data as a basis for more complex data structures,
 such as stacks.
 
 
-##Usage##
+## Usage
 Simply include the files with the functions you'd like to use in your mod's 
 `tp2` file like any other `tpa` file.
 
 
-##Whose son?##
+## Whose son?
 Json is a simple, but very flexible data format commonly used on the internet
 to exchange data or provide configuration. A json expression can be one of the
 following:
 
-###Json string###
+#### Json string
 A json string is quoted within a pair of `'"'`, with the `'\'` and `'"'` 
 characters preceded by an additional, otherwise ignored `\`:
 
@@ -39,7 +39,7 @@ characters preceded by an additional, otherwise ignored `\`:
 Functions for converting between a raw expression and its unquoted, real
 values are provided.
 
-###Json number###
+#### Json number
 As Weidu has no support for fractions, only integral values are supported. 
 To compensate, the value can be in any of the formats accepted by Weidu:
 
@@ -49,7 +49,7 @@ To compensate, the value can be in any of the formats accepted by Weidu:
 	0o766
 	+0x80
 
-###Json Boolean###
+#### Json Boolean
 A json Boolean value is simply one of:
 
 	false
@@ -58,14 +58,14 @@ Booleans are converted when their value is requested to integers `0` and `1`
 respectively, exactly as integer expressions can appear as conditions in
 WeiDU code.
 
-###Json array###
+#### Json array
 A json array is a sequence of any numer of json expressions, separated by the
 `','` character and surrounded in a pair of brackets `'['`/`']'`:
 
 	[]
 	[1, "two" , {"three": 3}]
 
-###Json object###
+#### Json object
 A json object is a map/dictionary simmilar to WeiDU arrays indexed by arbirary 
 strings. It is a sequence of any number of entries/fields separated by `','`
 and surrounded in a pair of braces `'{'`/`'}'`. Each entry consists of 
@@ -75,17 +75,17 @@ expression as its value:
 	{}
 	{ "name": "Imoen", "abilities": {"DEX": 18, "INT": 17}}
 	
-###Unsupported features###
+### Unsupported features
 As WeiDU does not have a concept of null values or any practical means of 
 implementing rational fractions, there is no support for the `null` expression
 and rational numbers.
 
-##Extensions##
+### Extensions
 *Bhaal's son* aims to extend the Json standard with domain specific expressions
 such as named constants for commonly used values. This support is currently
 very limited, but it is hoped to grow as the library becomes used.
 
-###Regular expressions###
+#### Regular expressions
 A regular expression is a Json string preceded immediately by a `'R'` or `'r'`
 character:
 
@@ -100,17 +100,17 @@ a mod.
 
 
 
-##API##
+## API
 The list of functions defined in this library. It is provided here mainly
 as a feature list and very well may be somewhat out of date with the
 current implementation - consult the documentation in the code for a particular
 function to be sure.
 
-###String utilities###
+### String utilities
 The following variables and functions are located in the `stringutil.tpa` 
 include file of weidu actions:
 
-####Constants####
+#### Constants
 A string with all whitespace characters:	
 	OUTER_TEXT_SPRINT WHITESPACE_CHARS ~ %WNL%%TAB%~
 
@@ -120,7 +120,7 @@ A regular expression character class matching whitespace permitted in json:
 A regular expression character class matching all non-whitespace characters:
 	OUTER_TEXT_SPRINT BLACKSPACE_RX ~\([^%WHITESPACE_CHARS%]*\)~
 
-####Functions####
+#### Functions
 Escape REGEXP special characters in a string with a '\', so that it can 
 be safely used inside a regular expression for verbatim matching. 
  					
@@ -298,11 +298,11 @@ Removes all leading and trailing whitespace from a given string.
 
 
 
-###Json support###
+### Json support
 The following constants and functions are provided in the `json.tpa` 
 WeiDU include file.
 
-####Constants####
+#### Constants
 	/** The character used to separate individual keys/indexing in complex properties forming
 	  * paths to deeply nested elements. See get_json/set_json.
 	  */
@@ -327,7 +327,7 @@ WeiDU include file.
 	OUTER_SET MAX_INT = BIT31 - 1 //2147483647
 
 
-####Writing to the patch buffer####
+#### Writing to the patch buffer
 The following functions write values in the json format at the given offset 
 in the implicit patch buffer.
 i
@@ -467,7 +467,7 @@ i
 			offset
 
 
-####Json formatting####
+#### Json formatting
 The following functions take as argument values in the normal, weidu-friendly
 form and convert them to strings in the json format.
 
@@ -554,7 +554,7 @@ form and convert them to strings in the json format.
 			res	
 
 
-####Reading json from the buffer####
+#### Reading json from the buffer
 The following patch functions start reading contents of the patch buffer
 at the given offset and consume the whole next json expression, converting
 it to a format usable in weidu.
@@ -839,7 +839,7 @@ it to a format usable in weidu.
 			json
 
 
-####Json validation####
+#### Json validation
 The following functions verify if a given string contains valid json data of an
 expected type.
 
@@ -922,7 +922,7 @@ expected type.
 
 
 
-####Json parsing####
+#### Json parsing
 The following functions take a %json% string with a valid json expression and
 convert them to a more weidu-friendly form. They have behaviour mostly 
 consistent with the 'reading' functions, so consult them for more details.
@@ -1079,7 +1079,7 @@ consistent with the 'reading' functions, so consult them for more details.
 		RET_ARRAY res
 
 
-####Json accessors####
+#### Json accessors
 The following functions extract a subexpression value from json data 
 in a string.
 
@@ -1268,7 +1268,7 @@ in a string.
 
 
 
-####Local Json modifications####
+#### Local Json modifications
 These functions implement operations modifying individual fragments 
 of json data.
 
@@ -1429,7 +1429,7 @@ of json data.
 
 
 
-####Global Json modifications#####
+#### Global Json modifications
 These functions modify the whole input json expression based on the provided
 rules, transforming it into potentially a completely different structure.
 
@@ -1574,7 +1574,7 @@ rules, transforming it into potentially a completely different structure.
 
 
 
-####File reads####
+#### File reads
 
 	/** Reads and validates json data from a file. */
 	DEFINE_ACTION/PATCH_FUNCTION read_json_file
