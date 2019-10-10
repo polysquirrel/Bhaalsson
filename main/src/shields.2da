@@ -1,7 +1,0 @@
-item      name  desc  lbs AC       MR% PR% SR% CR% wand breath speed THAC0 -APR -DEX <STR <DEX 
-SHLD08    -     @1191 2   0/1/1/1  0   0   0   10  0    0      0     0     -    -     4    -
-SHLD01    -     @1192 6   0/1/2/2  0   0   0   10  1    0      1     0     -    -     8    -
-SHLD03    -     @1193 16  1/2/3/3  0   0   0   15  1    1      2     -1    -    1     12   -
-SHLD05    -     @1194 22  3/3/3/3  0   0   0   20  2    2      2     -1    0.5  2     15   -
-
-//AC: missile/piercing/slashing/crushing
