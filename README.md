@@ -1065,9 +1065,18 @@ consistent with the 'reading' functions, so consult them for more details.
 		STR_VAR json = ~~
 		RET res
 
-	/** Converts a json atomic value - a boolean, number, string or regexp - into a weidu 
-	  * variable in the manner defined by the `read_json_atom` function. Strings and regular
-	  * expressions are unquoted in the process while boolean values are converted to `0` and `1`
+	/** Resolve the given a weidu/bhaalsson translation string reference literal to the
+	  * associated string for the chosen language. 
+	  */
+	DEFINE_ACTION/PATCH_FUNCTION json_translation_value
+		STR_VAR json = ~~
+		RET res
+
+
+	/** Converts a json atomic value - a boolean, number, string, translation reference 
+	  * or regexp - into a weidu variable in the manner defined by the `read_json_atom` function. 
+	  * Strings and regular expressions are unquoted in the process, translation string 
+	  * references resolved, while boolean values are converted to `0` and `1`
 	  * based on their value.
 	  */
 	DEFINE_ACTION/PATCH_FUNCTION json_value

@@ -51,8 +51,7 @@ case "$#" in
 							mkdir "$GAMEDIR/$name-test"
 						fi
 
-						cp ./test/src/setup-$name-test.tp2 "$GAMEDIR/$name-test"
-						cp ./test/src/json-input.tpa "$GAMEDIR/$name-test"
+						cp -a ./test/src/* "$GAMEDIR/$name-test"
 						cp $moddir/* "$GAMEDIR/$name-test"
 						cp ./bin/weidu-$system$extension "$GAMEDIR/setup-$name-test$extension"
 						cd "$GAMEDIR"
