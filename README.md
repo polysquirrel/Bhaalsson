@@ -112,12 +112,15 @@ include file of weidu actions:
 
 #### Constants
 A string with all whitespace characters:	
+
 	OUTER_TEXT_SPRINT WHITESPACE_CHARS ~ %WNL%%TAB%~
 
 A regular expression character class matching whitespace permitted in json:
+	
 	OUTER_TEXT_SPRINT WHITESPACE_RX ~\([%WHITESPACE_CHARS%]*\)~
 
 A regular expression character class matching all non-whitespace characters:
+	
 	OUTER_TEXT_SPRINT BLACKSPACE_RX ~\([^%WHITESPACE_CHARS%]*\)~
 
 #### Functions
@@ -281,16 +284,19 @@ the length of the longest whitespace segment is calculated.
 			peek
 
 Removes all leading whitespace from a given string. 
+
 	DEFINE_ACTION/PATCH_FUNCTION trim_string_front 
 		STR_VAR string = ~~
 		RET res 
 
 Removes all trailing whitespace from a given string.
+	
 	DEFINE_ACTION/PATCH_FUNCTION trim_string_back 
 		STR_VAR string = ~~
 		RET res 
 
 Removes all leading and trailing whitespace from a given string. 
+	
 	DEFINE_ACTION/PATCH_FUNCTION trim_string 
 		STR_VAR string = ~~
 		RET res
@@ -303,6 +309,7 @@ The following constants and functions are provided in the `json.tpa`
 WeiDU include file.
 
 #### Constants
+	
 	/** The character used to separate individual keys/indexing in complex properties forming
 	  * paths to deeply nested elements. See get_json/set_json.
 	  */
@@ -330,7 +337,6 @@ WeiDU include file.
 #### Writing to the patch buffer
 The following functions write values in the json format at the given offset 
 in the implicit patch buffer.
-i
 
 	/** Inserts the given boolean value in the json format (true|false) into the currently patched
 	  * buffer at the given offset, pushing back any existing data. The value can be given either
@@ -1417,7 +1423,7 @@ of json data.
 			  * Ignored when empty/not specified. */
 			push = ~~
 			/** A json array containing elements to be inserted on the top of the stack.
-		  * Ignored when empty/not specified. */
+		  	* Ignored when empty/not specified. */
 			pushall = ~~
 		RET
 			/** The stack after modifications. */
@@ -1447,7 +1453,10 @@ rules, transforming it into potentially a completely different structure.
 	  *  - calling the given action function %map% with arguments %json% - the result of previous steps
 	  *    and %property% - the property path leading to the patched element.
 	  *  - calling an action macro %macro% with variables %json% and %property% set to the matched 
-	  *  element and its fully resolved property path.
+	  *    element and its fully resolved property path.
+	  *  If any of these steps returns an empty string, the corresponding element is removed/omitted:
+	  * If the removed element was a field in the object, the whole field is removed;
+	  * if it was an element of an array, the following elements are shift down to its place.
 	  *  The final result can be one of the following, depending on the value of argument %as%:
 	  *  - if %as% is not specified or empty, the patching happens 'in place' with the result 
 	  *    of the patch replacing the matched element in the returned json.
@@ -1493,7 +1502,7 @@ rules, transforming it into potentially a completely different structure.
 			  * Before each call, the %json% variable is set to the matched element, while %property% to its property path. */
 			macro = ~~
 			/** Specifies the manner in which the patched elements are returned. If omitted, the patched
-			  * simply values replace the originals in the buffer. If equal to ~[]~, the root json
+			  * values simply replace the originals in the buffer. If equal to ~[]~, the root json
 			  * element is completely replaced with an array containing directly all patched elements.
 			  * If equal to ~{}~, the root json element is replaced with a json object with fields named
 			  * after concrete paths to found elements (i.e., without any wildcards) and their values
