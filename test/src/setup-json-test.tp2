@@ -1252,6 +1252,13 @@ INSTALL_BY_DEFAULT
 		RET res END
 	OUTER_TEXT_SPRINT expect ~[]~
 	LAM should_equal
+	
+	LAF map_json
+		STR_VAR json = EVAL ~%json%~ select = ~[-]{"name":"Fencing"} * "crit"~ as = ~[]~
+		RET res END
+	OUTER_TEXT_SPRINT expect ~[1]~
+	LAM should_equal
+		
 
 
 BEGIN ~map_json should collect selected elements in an object~
@@ -1282,7 +1289,13 @@ INSTALL_BY_DEFAULT
 	OUTER_TEXT_SPRINT expect ~{}~
 	LAM should_equal
 
-
+	LAF map_json
+		STR_VAR 
+			json = EVAL ~%json%~ 
+			select = ~[-] * {r".*hand": r".*\"APR\".*"} "main hand" "THAC0"~
+			as = ~{}~
+		RET res END
+	OUTER_TEXT_SPRINT expect ~{"[1].**.main hand.THAC0": 0, "[3].-.main hand.THAC0": -2, "[3].*.main hand.THAC0": -2, "[3].**.main hand.THAC0": 0, "[3].***.main hand.THAC0": -2}~
 
 
 

@@ -1643,22 +1643,26 @@ rules, transforming it into potentially a completely different structure.
 			json = ~~
 			/** Path selector pointing at elements which should be patched. 
 			  * It can consist of any sequence of:
-			  *  - a json string (in double quotes) matches an object field of the same name;
-			  *  - a '*' character matches all fields of an object;
-			  *  - ~[%n%]~ matches the (n+1)-th element of an array;
-			  *  - ~[%n%-%m%]~ matches the elements of an array with indices between %n% (inclusive) 
+			  *  - a json string (in double quotes) selects an object field of the same name;
+			  *  - a '*' character selects all fields of an object;
+			  *  - a json object pattern '{"x": json1, "y": json2}' matches any json object 
+			  *    whith fields "x" and "y" matching 'json1' and 'json2' (in any order). 
+			  *    Both the field name and field value can be a regexp in the format r"regexp", 
+			  *    in which case the entirety of field name/value must match the regular expression.
+			  *    Otherwise the name/value must exactly equal the provided pattern. This filter
+			  *    does not select any field of the current object and instead is used to match
+			  *    other fields on the same level as the following path element.
+			  *  - ~[%n%]~ selects the (n+1)-th element of an array;
+			  *  - ~[%n%-%m%]~ selects the elements of an array with indices between %n% (inclusive) 
 			  *    and %m% (exclusive). Any of the two values can be missing, denoting the start 
 			  *    and the end of the array, respectively.
 			  * All whitespace surrounding the individual path elements is ignored.
 			  * An empty selector points directly to the root element; this is the default value.
-			  * As follows, the selector ~[-] "abilities" *~ would match all field values of any object
-			  * under the "abilities" field of any object in the root array. */
-			select = ~~
-			/** A regular expression which found elements must match in order to be patched/included. 
-			 *  If not present, it will match any element under the specified path. All groups
-			 *  (fragments surrounded by `\(` and `\)` can be referenced in %patch% by their
-			 *  number, with `\0` meaning the whole expression.
-			 */
+			  * As follows, the selector ~[-] {"class": r"Thief/.*"} "abilities" *~ would match all field 
+			  * values of the object under the "abilities" field for all elements of the root array
+			  * which have a field "class" matching "Thief/.*".
+			  */
+			
 			match = ~.*~
 			/** The replacement value for the matched elements. Defaults to ~\0~, meaning the matched
 			  * element is used without changes. */
