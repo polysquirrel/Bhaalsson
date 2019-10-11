@@ -66,7 +66,6 @@ To compensate, the value can be in any of the formats accepted by Weidu:
 	-42
 	0xff
 	0o766
-	+0x80
 
 #### Json Boolean
 A json Boolean value is simply one of:
