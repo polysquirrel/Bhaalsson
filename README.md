@@ -10,7 +10,7 @@ converting some data - such as game items and spells - from their binary files
 (or weidu code creating it) to a format easily readable by humans, making
 it possible to precisely tweak a mod's effects even by end users. For example,
 a mod which changes the class and statistics of any game NPCs could have 
-all its data in Json files, easily modifiable and extended by players
+all its data in Json files, easily modifiable and extendedable by players
 to suit their needs.
 
 Aside from reading Json data from files and converting it to WeiDU variables 
@@ -20,9 +20,28 @@ languages) and treating Json data as a basis for more complex data structures,
 such as stacks.
 
 
+
 ## Usage
-Simply include the files with the functions you'd like to use in your mod's 
-`tp2` file like any other `tpa` file.
+Unpack the archive in your mod's directory and simply include the files with 
+the functions you'd like to use in your mod's `tp2` file like any other `tpa` 
+file. If you'd rather place the files in some other directory under your mod's
+structure, declare a `BHAALSSON_DIR` variable with the path to the folder with
+the files before the include directrive, so they are able to find themselves.
+
+
+
+## Performance
+*WeiDU* was never meant to be treated as a programming language or used to the
+extent it is used now; this unexpected popularity means many of language 
+features are grossly inefective, from string concatenation to simple argument
+passing between functions. Care has been taken to avoid the most common 
+pitfalls and pick always the faster rather than simpler solution, but 
+ultimately, all data is stored inside string variables, forcing parsing and
+copying of the whole string whenever a structure is modified. This library is
+no substitute for true native data structures from the performance standpoint
+and some experimenting may be necessary to verify if it is suitable for your
+needs.
+
 
 
 ## Whose son?
@@ -389,11 +408,55 @@ in the implicit patch buffer.
 			/** Offset in the patched buffer immediately after the written value. */
 			offset
 
+	/** Inserts the given regular expression into the currently patched buffer at the given offset, 
+	  * pushing back any existing data. The value can be given either as an ordinary string %regexp%,
+	  * or as an already quoted value %json% (in the `r"..."` format).
+	  * The latter parameter, if not empty, takes precedence.
+	  * If the %offset% parameter is not specified or is negative, the value will be appended 
+	  * to the buffer. Offset larger than the length of the buffer will result in an error.
+	  */
+	DEFINE_PATCH_FUNCTION write_json_regexp
+		INT_VAR
+			/** Offset in the buffer after which the value will be written. */
+			offset = 0 - 1
+		STR_VAR
+			/** Regular expression as a normal string to format as a bhaalsson expression. 
+			  * Checked if the %json% argument is empty. */
+			regexp = ~~
+			/** Regular expression in the bhaalsson format to write in the buffer. */
+			json = ~~
+		RET
+			/** The offset in the buffer immediately after the last written character. */
+			offset
+
+	/** Inserts the given translation string reference into the currently patched buffer 
+	  * at the given offset, pushing back any existing data. The value can be given either 
+	  * as a numeric key %key%, or a ready literal %json% in the form of `@<number>`.
+	  * The latter parameter, if not empty, takes precedence. The translation reference is always
+	  * written as itself, without resolving it to string. However, if %validate% parameter is
+	  * set to `1` (default), it is resolved before writing solely to ensure that it points 
+	  * to an existing translation string.
+	  * If the %offset% parameter is not specified or is negative, the value will be appended 
+	  * to the buffer. Offset larger than the length of the buffer will result in an error.
+	  */
+	DEFINE_PATCH_FUNCTION write_json_translation
+		INT_VAR 
+			/** Offset in the buffer after which the value will be written. */
+			offset = 0 - 1
+			/** If non-zero (default), the reference is resolved before writing to ensure its validity. */
+			validate = 1
+		STR_VAR
+			/** A string consisting of a positive number of digits forming the translation string key. 
+			  * Used only if the %json% parameter is empty. */
+			key = ~~
+			/** A valid translation string reference literal. If empty/omitted the %key% parameter will be used. */
+			json = ~~
+	
 
 	/** Inserts the given value into the currently patched buffer at the given offset, 
 	  * pushing back any existing data. The value, given as a string parameter %value%, is
 	  * written as a json string, unless it is a valid integer as returned by WeiDU's IS_AN_INT function,
-	  * in which case it is written as a number.
+	  * or a translation string reference, in which case it is written as-is.
 	  * If the %offset% parameter is not specified or is negative, the value will be appended to the buffer. 
 	  * Offset larger than the length of the buffer will result in an error.
 	  */
@@ -503,10 +566,11 @@ form and convert them to strings in the json format.
 	DEFINE_ACTION/PATCH_FUNCTION json_string
 		STR_VAR string = ~~
 		RET res
-		
+
 	/** Formats the given value as json. If it is a valid integer, it is left intact.
-	  * Otherwise it is quoted as a json string. 
-	  */	
+	  * If it is a valid translation string reference, it is resolved to the associated string
+	  * value for the appropriate languague. Otherwise it is quoted as a json string. 
+	  */
 	DEFINE_ACTION/PATCH_FUNCTION json_atom
 		STR_VAR value = ~~
 		RET res 
@@ -1553,19 +1617,25 @@ rules, transforming it into potentially a completely different structure.
 	  *    and %property% - the property path leading to the patched element.
 	  *  - calling an action macro %macro% with variables %json% and %property% set to the matched 
 	  *    element and its fully resolved property path.
-	  *  If any of these steps returns an empty string, the corresponding element is removed/omitted:
-	  * If the removed element was a field in the object, the whole field is removed;
+	  * If any of these steps returns an empty string, the corresponding element is removed/omitted:
+	  * if the removed element was a field in the object, the whole field is removed;
 	  * if it was an element of an array, the following elements are shift down to its place.
+	  *
 	  *  The final result can be one of the following, depending on the value of argument %as%:
 	  *  - if %as% is not specified or empty, the patching happens 'in place' with the result 
 	  *    of the patch replacing the matched element in the returned json.
-	  *  - if %as% equals ~[]~, the root element (as seen from offset %offset%) is replaced with 
-	  *    a json array containing all patched elements; all not matched and surrounding elements 
+	  *  - if %as% equals ~[]~, the root element is replaced with a json array 
+	  *    containing all patched elements; all not matched and surrounding elements 
 	  *    are discarded.
 	  *  - if %as% equals ~{}~, the root element (as seen from offset %offset%) is replaced with a json object
 	  *    with matched elements as fields. The names of the fields are the paths to the matched elements
-	  *    and the values are the results of applying the patch. As with the previous case, any not matched
+	  *    (in the format accepted by the `get_json` function) and the values 
+	  *    are the results of applying the patch. As with the previous case, any not matched
 	  *    elements are not included in the result.
+	  *  This function is particularly useful when reading data from 2da or CSV files:
+	  *  their flat structure means that sometimes several rows describe different parts
+	  *  of the same, larger entity, and it would be convenient to handle them together.
+	  * 
 	  */
 	DEFINE_ACTION/PATCH_FUNCTION map_json
 		STR_VAR

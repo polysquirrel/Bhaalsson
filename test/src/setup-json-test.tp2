@@ -169,6 +169,26 @@ INSTALL_BY_DEFAULT
 	LAM should_equal
 
 
+
+BEGIN ~json_atom should correctly write numbers, strings, and translation string refs~
+INSTALL_BY_DEFAULT
+	ACTION_FOR_EACH expect IN ~0x20~ ~0o766~ ~1~ ~+42~ ~-11~ ~- 0~ BEGIN
+		LAF json_atom STR_VAR value = EVAL ~%expect%~ RET res END
+		LAM should_equal
+	END
+
+	LAF json_atom STR_VAR value = ~@042~ RET res END
+	OUTER_SPRINT expect ~@042~
+	LAM should_equal
+	
+	LAF json_atom STR_VAR value = ~@44~ RET res END
+	OUTER_SPRINT expect ~"@44"~
+	LAM should_equal 
+	LAF json_atom STR_VAR value = ~"~ RET res END
+	OUTER_TEXT_SPRINT expect ~"\""~
+	LAM should_equal
+
+
 	
 BEGIN ~json_array should produce valid json arrays from json elements~	
 INSTALL_BY_DEFAULT

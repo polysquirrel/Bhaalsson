@@ -36,11 +36,14 @@ OUTER_TEXT_SPRINT JSON_STRING_RX ~"\(\(\\\(\\\\\)*"\)?\(%JSON_STRING_ATOM_RX%*\)
 OUTER_TEXT_SPRINT JSON_REGEXP_RX ~[rR]%JSON_STRING_RX%~
 
 /** A regular expression matching a weidu number literal with an optional sign character. */
-OUTER_TEXT_SPRINT JSON_NUMBER_RX ~\([-+]?0x[0123456789abcdef]+\|0o[01234567]+\|[0123456789]+\)~
+OUTER_TEXT_SPRINT JSON_NUMBER_RX ~\(0x[0123456789abcdef]+\|0o[01234567]+\|[-+]?%WHITESPACE_RX%[0123456789]+\)~
+
+/** A regexp matching a translation string reference. */
+OUTER_TEXT_SPRINT JSON_TRA_RX ~@[0123456789]+~
 
 /** A regular expression matching any json+ atomic values: Booleans, integers, strings, 
   * regexps and translation string references. */
-OUTER_TEXT_SPRINT JSON_ATOM_RX ~\(null\|true\|false\|%JSON_NUMBER_RX%\|%JSON_STRING_RX%\|%JSON_REGEXP_RX%\|\)~
+OUTER_TEXT_SPRINT JSON_ATOM_RX ~\(null\|true\|false\|%JSON_NUMBER_RX%\|%JSON_STRING_RX%\|%JSON_REGEXP_RX%\|%JSON_TRA_RX%\)~
 
 OUTER_SET MAX_INT = BIT31 - 1 //2147483647
  
@@ -253,8 +256,8 @@ DEFINE_PATCH_FUNCTION write_json_number
   * pushing back any existing data. The value can be given either as an ordinary string %string%,
   * or as an already quoted value %json% (surrounded in '"' with any '"' inside escaped with '\').
   * The latter parameter, if not empty, takes precedence.
-  * If the %offset% parameter is not specified or is negative, the value will be appended to the buffer. 
-  * Offset larger than the length of the buffer will result in an error.
+  * If the %offset% parameter is not specified or is negative, the value will be appended 
+  * to the buffer. Offset larger than the length of the buffer will result in an error.
   */
 DEFINE_PATCH_FUNCTION write_json_string
 	INT_VAR 
@@ -295,15 +298,106 @@ DEFINE_PATCH_FUNCTION write_json_string
 			SET offset += length
 		END
 	END
+
+
+
+/** Inserts the given regular expression into the currently patched buffer at the given offset, 
+  * pushing back any existing data. The value can be given either as an ordinary string %regexp%,
+  * or as an already quoted value %json% (in the `r"..."` format).
+  * The latter parameter, if not empty, takes precedence.
+  * If the %offset% parameter is not specified or is negative, the value will be appended 
+  * to the buffer. Offset larger than the length of the buffer will result in an error.
+  */
+DEFINE_PATCH_FUNCTION write_json_regexp
+	INT_VAR
+		/** Offset in the buffer after which the value will be written. */
+		offset = 0 - 1
+	STR_VAR
+		/** Regular expression as a normal string to format as a bhaalsson expression. 
+		  * Checked if the %json% argument is empty. */
+		regexp = ~~
+		/** Regular expression in the bhaalsson format to write in the buffer. */
+		json = ~~
+	RET
+		/** The offset in the buffer immediately after the last written character. */
+		offset
+	BEGIN
+		PATCH_IF offset < 0 THEN BEGIN
+			SET offset = BUFFER_LENGTH
+		END
+		PATCH_IF ~%json%~ STR_EQ ~~ THEN BEGIN
+			INNER_PATCH_SAVE json ~r~ BEGIN
+				LPF write_json_string STR_VAR string = EVAL ~%regexp%~ RET offset END
+			END
+		END ELSE PATCH_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_REGEXP_RX%%WHITESPACE_RX%$~ THEN BEGIN
+			PATCH_FAIL ~write_json_regexp: argument json=<<%json%>> is not a bhaalsson regexp.~
+		END
+		SET length = STRING_LENGTH ~%json%~
+		INSERT_BYTES offset length
+		WRITE_ASCIIE offset ~%json%~
+		SET offset += length
+	END
+		
 	
-	
+
+/** Inserts the given translation string reference into the currently patched buffer 
+  * at the given offset, pushing back any existing data. The value can be given either 
+  * as a numeric key %key%, or a ready literal %json% in the form of `@<number>`.
+  * The latter parameter, if not empty, takes precedence. The translation reference is always
+  * written as itself, without resolving it to string. However, if %validate% parameter is
+  * set to `1` (default), it is resolved before writing solely to ensure that it points 
+  * to an existing translation string.
+  * If the %offset% parameter is not specified or is negative, the value will be appended 
+  * to the buffer. Offset larger than the length of the buffer will result in an error.
+  */
+DEFINE_PATCH_FUNCTION write_json_translation
+	INT_VAR 
+		/** Offset in the buffer after which the value will be written. */
+		offset = 0 - 1
+		/** If non-zero (default), the reference is resolved before writing to ensure its validity. */
+		validate = 1
+	STR_VAR
+		/** A string consisting of a positive number of digits forming the translation string key. 
+		  * Used only if the %json% parameter is empty. */
+		key = ~~
+		/** A valid translation string reference literal. If empty/omitted the %key% parameter will be used. */
+		json = ~~
+	RET
+		/** The offset in the buffer immediately after the last written character. */
+		offset
+	BEGIN
+		PATCH_IF offset < 0 THEN BEGIN
+			SET offset = BUFFER_LENGTH
+		END
+		PATCH_IF ~%json%~ STR_EQ ~~ THEN BEGIN
+			PATCH_IF ~%key%~ STRING_MATCHES_REGEXP ~^[0123456789]+$~ THEN BEGIN
+				PATCH_FAIL ~write_json_translation: invalid translation key: '%key%'.~
+			END
+			TEXT_SPRINT json ~@%key%~
+		END ELSE PATCH_IF ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_TRA_RX%%WHITESPACE_RX%$~ THEN BEGIN
+			PATCH_FAIL ~write_json_translation: argument json=<<%json%>> is not a translation string reference.~			
+		END
+		PATCH_IF validate THEN BEGIN //check if the string reference is valid		
+			LPF SUBSTRING 
+				INT_VAR start = 1 length = STRING_LENGTH ~%json%~ - 1
+				STR_VAR string = EVAL ~%json%~
+				RET key = substring END
+			SPRINT check (AT key)
+		END
+		SET length = STRING_LENGTH ~%json%~
+		INSERT_BYTES offset length
+		WRITE_ASCIIE offset ~%json%~
+		SET offset += length
+	END
+
+
 
 /** Inserts the given value into the currently patched buffer at the given offset, 
   * pushing back any existing data. The value, given as a string parameter %value%, is
   * written as a json string, unless it is a valid integer as returned by WeiDU's IS_AN_INT function,
-  * in which case it is written as a number.
-  * If the %offset% parameter is not specified or is negative, the value will be appended to the buffer. 
-  * Offset larger than the length of the buffer will result in an error.
+  * or a valid translation string reference in the form of `@<number>`, in which case it is written
+  * as-is. If the %offset% parameter is not specified or is negative, the value will be appended 
+  * to the buffer. Offset larger than the length of the buffer will result in an error.
   */
 DEFINE_PATCH_FUNCTION write_json_atom
 	INT_VAR 
@@ -316,8 +410,30 @@ DEFINE_PATCH_FUNCTION write_json_atom
 		/** Offset in the patched buffer immediately after the written value. */
 		offset
 	BEGIN
-		PATCH_IF IS_AN_INT ~%value%~ THEN BEGIN
-			LPF write_json_number INT_VAR offset = offset number = value RET offset END
+		PATCH_IF NOT ~%value%~ STRING_MATCHES_REGEXP ~^%JSON_NUMBER_RX%$~ THEN BEGIN
+			LPF write_json_number 
+				INT_VAR offset = offset 
+				STR_VAR json = EVAL ~%value%~
+				RET offset END
+		
+		END ELSE PATCH_IF NOT ~%value%~ STRING_MATCHES_REGEXP ~^%JSON_TRA_RX%$~ THEN BEGIN
+			PATCH_TRY //check if it is really a valid tra reference.
+				LPF write_json_translation 
+					INT_VAR offset = offset 
+					STR_VAR json = EVAL ~%value%~
+					RET offset END
+			WITH
+				~Not_found~ BEGIN
+					PATCH_WARN ~write_json_atom: writing '%value%' as a json string.~
+					LPF write_json_string 
+						INT_VAR offset = offset
+						STR_VAR string = EVAL ~%value%~
+						RET offset END
+				END
+				DEFAULT
+					PATCH_RERAISE
+			END
+		
 		END ELSE BEGIN
 			LPF write_json_string 
 				INT_VAR offset = offset 
@@ -634,51 +750,49 @@ DEFINE_PATCH_FUNCTION json_string
 
 /** Creates a json literal for a translation string with the given key. */
 DEFINE_ACTION_FUNCTION json_translation
-	STR_VAR tra = ~~
+	STR_VAR key = ~~
 	RET res
 	BEGIN
-		OUTER_TEXT_SPRINT res ~@%tra%~
+		OUTER_TEXT_SPRINT res ~@%key%~
 	END
 	
 	
 	
 /** Creates a json literal for a translation string with the given key. */	
 DEFINE_PATCH_FUNCTION json_translation
-	STR_VAR tra = ~~
+	STR_VAR key = ~~
 	RET res
 	BEGIN
-		TEXT_SPRINT res ~@%tra%~
+		TEXT_SPRINT res ~@%key%~
 	END
 
 	
 
 /** Formats the given value as json. If it is a valid integer, it is left intact.
-  * Otherwise it is quoted as a json string. 
+  * If it is a valid translation string reference, it is resolved to the associated string
+  * value for the appropriate languague. Otherwise it is quoted as a json string. 
   */
 DEFINE_ACTION_FUNCTION json_atom
 	STR_VAR value = ~~
 	RET res
 	BEGIN
-		ACTION_IF IS_AN_INT ~%value%~ THEN BEGIN
-			OUTER_TEXT_SPRINT res ~%value%~
-		END ELSE BEGIN
-			LAF json_string STR_VAR string = EVAL ~%value%~ RET res END
+		OUTER_PATCH_SAVE res ~~ BEGIN
+			LPF write_json_atom STR_VAR value = EVAL ~%value%~ END
 		END
 	END
 	
 	
 
 /** Formats the given value as json. If it is a valid integer, it is left intact.
-  * Otherwise it is quoted as a json string. 
-  */	
+  * If it is a valid translation string reference, it is resolved to the associated string
+  * value for the appropriate languague. Otherwise it is quoted as a json string. 
+  */
 DEFINE_PATCH_FUNCTION json_atom
 	STR_VAR value = ~~
 	RET res 
 	BEGIN
-		PATCH_IF IS_AN_INT ~%value%~ THEN BEGIN
-			TEXT_SPRINT res ~%value%~
-		END ELSE BEGIN
-			LPF json_string STR_VAR string = EVAL ~%value%~ RET res END
+		INNER_PATCH_SAVE res ~~ BEGIN
+			LPF write_json_atom STR_VAR value = EVAL ~%value%~ END
 		END
 	END
 	
@@ -1972,10 +2086,10 @@ DEFINE_ACTION_FUNCTION is_json_number
   */
 DEFINE_PATCH_FUNCTION is_json_number
 	STR_VAR json = ~~
-	RET is_int
+	RET is_int is_number
 	BEGIN
 		INNER_ACTION BEGIN
-			LAF is_json_number STR_VAR json = EVAL ~%json%~ RET is_int END
+			LAF is_json_number STR_VAR json = EVAL ~%json%~ RET is_int is_number END
 		END
 	END
 	
@@ -2054,7 +2168,7 @@ DEFINE_PATCH_FUNCTION is_json_translation
 	STR_VAR json = ~~
 	RET is_tra
 	BEGIN
-		SET is_tra = NOT ~%json%~ STRING_MATCHES_REGEXP ~^WHITESPACE_RX%%@[0123456789]+%WHITESPACE_RX%$~
+		SET is_tra = NOT ~%json%~ STRING_MATCHES_REGEXP ~^%WHITESPACE_RX%%JSON_TRA_RX%%WHITESPACE_RX%$~
 	END
 	
 
