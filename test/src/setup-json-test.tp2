@@ -1254,7 +1254,7 @@ INSTALL_BY_DEFAULT
 	LAM should_equal
 	
 	LAF map_json
-		STR_VAR json = EVAL ~%json%~ select = ~[-]{"name":"Fencing"} * "crit"~ as = ~[]~
+		STR_VAR json = EVAL ~%json%~ select = ~[-]{"name":"Fencing"} "*" "crit"~ as = ~[]~
 		RET res END
 	OUTER_TEXT_SPRINT expect ~[1]~
 	LAM should_equal

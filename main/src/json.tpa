@@ -146,7 +146,7 @@ DEFINE_ACTION_FUNCTION json_escape_str
  
 
 /** Replaces all '"' and '\' characters in the input string by '\"' and '\\' respectively. */ 
- DEFINE_PATCH_FUNCTION json_escape_str
+DEFINE_PATCH_FUNCTION json_escape_str
 	STR_VAR str = ~~
 	RET res 
 	BEGIN
@@ -157,8 +157,128 @@ DEFINE_ACTION_FUNCTION json_escape_str
 
 
 
+
+
+/** Verifies if two json expressions are equal. This comparison ignores all whitespace and
+  * compares json objects structurally, ignoring the order in which their fields appear
+  * in the string. 
+  */
+DEFINE_ACTION_FUNCTION json_equals
+	STR_VAR 
+		/** First of the json expressions to compare. */
+		x = ~~
+		/** Second of the json expressions to compare. */
+		y = ~~
+	RET
+		/** Set to zero if %x% does not equal %y% or a positive value otherwise. */
+		equal
+	BEGIN
+		LAF trim_string STR_VAR string = EVAL ~%x%~ RET x = res END
+		LAF trim_string STR_VAR string = EVAL ~%y%~ RET y = res END
+		
+		ACTION_MATCH ~%x%~ WITH
+			~^%JSON_ATOM_RX%$~ BEGIN
+				OUTER_SET equal = ~%x%~ STR_EQ ~%y%~
+			END
+			
+			~^{.*}$~ BEGIN
+				LAF is_json_object STR_VAR json = EVAL ~%y%~ RET is_object END
+				
+				ACTION_IF NOT is_object THEN BEGIN
+					OUTER_SET equal = 0
+				
+				END ELSE BEGIN
+					LAF raw_json_object_fields 
+						STR_VAR json = EVAL ~%x%~ 
+						RET xsize = size
+						RET_ARRAY xfields = res END
+					LAF raw_json_object_fields
+						STR_VAR json = EVAL ~%y%~
+						RET ysize = size
+						RET_ARRAY yfields = res END
+					
+					ACTION_IF xsize != ysize THEN BEGIN
+						OUTER_SET equal = 0
+					
+					END ELSE BEGIN
+						OUTER_SET equal = 1
+						ACTION_PHP_EACH xfields AS field => value BEGIN
+							ACTION_IF equal THEN BEGIN
+								ACTION_IF NOT VARIABLE_IS_SET $yfields(~%field%~) THEN BEGIN
+									OUTER_SET equal = 0
+								
+								END ELSE BEGIN
+									OUTER_TEXT_SPRINT yvalue $yfields(~%field%~)
+									LAF json_equals 
+										STR_VAR x = EVAL ~%value%~ y = EVAL ~%yvalue%~
+										RET equal END
+								END
+							END
+						END
+					END
+				END
+			END
+			~^[.*]$~ BEGIN
+				LAF is_json_array STR_VAR json = EVAL ~%y%~ RET is_array END
+				
+				ACTION_IF NOT is_array THEN BEGIN
+					OUTER_SET equal = 0
+					
+				END ELSE BEGIN
+					LAF json_to_array 
+						STR_VAR json = EVAL ~%x%~ 
+						RET xsize = size 
+						RET_ARRAY xs = res END
+					LAF json_to_array
+						STR_VAR json = EVAL ~%y%~
+						RET ysize = size
+						RET_ARRAY ys = res END
+					
+					ACTION_IF xsize != ysize THEN BEGIN
+						OUTER_SET equal = 0
+						
+					END ELSE BEGIN
+						OUTER_SET equal = 1
+						OUTER_SET i = 0
+						OUTER_WHILE (i < xsize AND equal) BEGIN
+							OUTER_TEXT_SPRINT xi $xs(~%i%~)
+							OUTER_TEXT_SPRINT yi $ys(~%i%~)
+							LAF json_equals STR_VAR x = EVAL ~%xi%~ y = EVAL ~%yi%~ RET equal END
+						END
+					END
+				END
+			END
+			
+			DEFAULT //should not happen but, just in case, revert to string equality
+				OUTER_SET equal = ~%x%~ STR_EQ ~%y%~
+		END
+	END
+
+
+
+/** Verifies if two json expressions are equal. This comparison ignores all whitespace and
+  * compares json objects structurally, ignoring the order in which their fields appear
+  * in the string. 
+  */
+DEFINE_PATCH_FUNCTION json_equals
+	STR_VAR 
+		/** First of the json expressions to compare. */
+		x = ~~
+		/** Second of the json expressions to compare. */
+		y = ~~
+	RET
+		/** Set to zero if %x% does not equal %y% or a positive value otherwise. */
+		equal
+	BEGIN
+		INNER_ACTION BEGIN
+			LAF json_equals STR_VAR x = EVAL ~%x%~ y = EVAL ~%y%~ RET equal END
+		END
+	END
+	
 	
 
+ 
+ 
  
 /*************************************************************************************
  ********************    Writing json to the patch buffer        ********************
@@ -424,7 +544,7 @@ DEFINE_PATCH_FUNCTION write_json_atom
 					RET offset END
 			WITH
 				~Not_found~ BEGIN
-					PATCH_WARN ~write_json_atom: writing '%value%' as a json string.~
+					PATCH_PRINT ~write_json_atom: writing '%value%' as a json string.~
 					LPF write_json_string 
 						INT_VAR offset = offset
 						STR_VAR string = EVAL ~%value%~
@@ -1483,15 +1603,14 @@ DEFINE_PATCH_FUNCTION read_raw_json_regexp
 				STR_VAR msg = ~read_raw_json_regexp: expected 'r' or 'R', got '%peek%'~
 			END
 		END
-		LPF skip_json_string INT_VAR offset = start + 1 RET skipped END
+		LPF skip_json_string INT_VAR offset = start + 1 RET offset skipped END
 		PATCH_IF NOT skipped THEN BEGIN
 			LPF report_invalid_json
 				STR_VAR msg = ~read_raw_json_regexp: expected a json regexp string after '%peek%'~
 			END
 		END
-		
-		LPF read_json_string INT_VAR offset = start + 1 RET offset res END
-		TEXT_SPRINT res ~%peek%%res%~
+
+		READ_ASCII start res (skipped + 1)
 	END
 	
 	
@@ -1521,7 +1640,7 @@ DEFINE_PATCH_FUNCTION read_json_regexp
 				STR_VAR msg = ~read_json_regexp: expected 'r' or 'R', got '%peek%'~
 			END
 		END
-		LPF skip_json_string INT_VAR offset = start + 1 RET skipped END
+		LPF skip_json_string INT_VAR offset = start + 1 RET offset skipped END
 		PATCH_IF NOT skipped THEN BEGIN
 			LPF report_invalid_json
 				STR_VAR msg = ~read_json_regexp: expected a json regexp string after '%peek%'~
@@ -4715,7 +4834,8 @@ DEFINE_PATCH_FUNCTION patch_json_recursion
 							RET end = offset size
 							RET_ARRAY fields = res END
 						
-						PHP_EACH ~%filter%~ AS field => pattern BEGIN
+						PHP_EACH filter AS field => pattern BEGIN
+							
 							PATCH_IF is_match THEN BEGIN
 								LPF is_json_string 
 									STR_VAR json = EVAL ~%field%~ 
@@ -4725,14 +4845,15 @@ DEFINE_PATCH_FUNCTION patch_json_recursion
 									RET is_regexp END
 								
 								PATCH_IF is_match THEN BEGIN //literal string matching of field name
-									PATCH_IF VARIABLE_IS_SET $res(~%field%~) THEN BEGIN									
-										TEXT_SPRINT value $res(~%field%~)
+									PATCH_IF VARIABLE_IS_SET $fields(~%field%~) THEN BEGIN									
+										TEXT_SPRINT value $fields(~%field%~)
 											
 										PATCH_IF is_regexp THEN BEGIN
 											SET is_match = NOT ~%value%~ STRING_CONTAINS_REGEXP ~^%pattern%$~
 										END ELSE BEGIN
-											//todo: introduce json_equals function
-											SET is_match = ~%value%~ STR_EQ ~%pattern%~
+											LPF json_equals 
+												STR_VAR x = EVAL ~%value%~ y = EVAL ~%pattern%~
+												RET is_match = equal END
 										END
 									END ELSE BEGIN
 										SET is_match = 0
@@ -4752,8 +4873,9 @@ DEFINE_PATCH_FUNCTION patch_json_recursion
 												PATCH_IF is_regexp THEN BEGIN
 													SET is_match = NOT ~%value%~ STRING_CONTAINS_REGEXP ~%pattern%~
 												END ELSE BEGIN
-													//todo: introduce json_equals function
-													SET is_match = ~%value%~ STR_EQ ~%pattern%~
+													LPF json_equals 
+														STR_VAR x = EVAL ~%value%~ y = EVAL ~%pattern%~
+														RET is_match = equal END
 												END									
 											END
 										END
@@ -5036,9 +5158,9 @@ DEFINE_PATCH_FUNCTION read_json_object_pattern
 				LPF skip_buffer_whitespace INT_VAR offset = offset + 1 RET offset peek END
 
 				PATCH_IF ~%peek%~ STR_EQ ~"~ THEN BEGIN
-					LPF read_json_string INT_VAR offset = offset RET offset field = res END
+					LPF read_raw_json_string INT_VAR offset = offset RET offset field = res END
 				END ELSE PATCH_IF ~%peek%~ STR_EQ ~r~ OR ~%peek%~ STR_EQ ~R~ THEN BEGIN
-					LPF read_json_regexp INT_VAR offset = offset RET offset field = res END
+					LPF read_raw_json_regexp INT_VAR offset = offset RET offset field = res END
 				END ELSE BEGIN
 					LPF report_invalid_json
 						STR_VAR msg = EVAL ~read_json_object_pattern: expected a json string or regexp in field position but got '%peek%'~
@@ -5054,7 +5176,7 @@ DEFINE_PATCH_FUNCTION read_json_object_pattern
 				
 				LPF skip_buffer_whitespace INT_VAR offset = offset + 1 RET offset peek END
 				PATCH_IF ~%peek%~ STR_EQ ~r~ OR ~%peek%~ STR_EQ ~R~ THEN BEGIN
-					LPF read_json_regexp INT_VAR offset = offset RET offset value = res END
+					LPF read_raw_json_regexp INT_VAR offset = offset RET offset value = res END
 				END ELSE BEGIN
 					LPF read_json INT_VAR offset = offset RET offset value = json END
 				END
